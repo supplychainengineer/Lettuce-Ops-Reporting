@@ -1,11 +1,11 @@
 # LettuceOps RCM Reporter
 
-A single-file browser tool that turns each practice's monthly RCM numbers into a branded, seven-page Revenue Intelligence report (PDF) for email.
+A single-file browser tool that turns each practice's monthly RCM numbers into a branded, six-page Revenue Intelligence report (PDF) for email.
 
 Open `index.html` in any browser. No install, no server. An internet connection is needed for the Download PDF button and the fonts; without it, use Print and choose Save as PDF.
 
 1. **Enter numbers**: pick or add a practice, add the month, type the numbers. Last month's value is shown under each box.
-2. **Report**: executive brief with a Revenue Health Index, patient funnel, claims and benefits, production and collections, A/R health, 12-month outlook, and recommended next steps. Type analyst notes at the foot of any page. Download the PDF and copy the email text.
+2. **Report**: a six-page story: summary with a Revenue Health Index, performance and contracted future revenue, insurance, cash flow, 12-month outlook, then problems and solutions. Type analyst notes at the foot of any page. Download the PDF and copy the email text.
 3. **Branding & products**: company name, colour, logo, footer; the product catalog (what each product does, its best feature, the problems it solves, its link), which the report matches to each practice's findings and features as a spotlight on the last page; per-practice targets and A/R loss-rate assumptions; backup and restore.
 
 Data is saved in the browser only. Use the backup text to move it between computers.

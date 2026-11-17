@@ -116,7 +116,7 @@ textarea{width:100%;min-height:80px;font-size:13px}
 .page tr.tot td{font-weight:700}
 .say{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:5px;color:var(--ink2)}
 .say b{color:var(--ink)}
-.hb{display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:8px;align-items:center;font-size:11.5px;padding:3px 0}
+.hb{display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:8px;align-items:center;font-size:11.5px;padding:1.5px 0}
 .hb .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .hb .track{height:12px;background:transparent} .hb .track i{border-radius:0 3px 3px 0}
 .funnel{display:flex;flex-direction:column;gap:5px}
@@ -189,7 +189,7 @@ const FIELDS = [
   ["insSingle","Patients with single coverage","n"],["insDual","Patients with dual coverage","n"],
   ["verPrior","Prior verifications","n"],["verSame","Same-day verifications","n"],["verPost","Post-exam verifications","n"],
   {sec:"Lettuce Claim", src:"Treatment contract sheet and the tracking sheet"},
-  ["starts","Treatment starts","n"],["convRate","Starts conversion rate %","%"],
+  ["starts","Treatment starts","n"],["startsPrior","…of which from exams in earlier months (optional)","n","opt"],["convRate","Starts conversion rate %","%"],
   ["aobSub","AOB to subscriber $","$"],["aobPrac","AOB to practice $","$"],
   ["submitted","Claims submitted","n"],["pending","Claims pending","n"],["denialRate","Denial rate %","%"],["resubRate","Re-submit rate %","%"],
   {sec:"Production", src:"Practice reports sheet"},
@@ -261,8 +261,8 @@ const sum = (m,keys) => keys.reduce((a,k)=>a+n0(m[k]),0);
 const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const parseNum = s => { const t=String(s).replace(/[$,%\s]/g,""); if(t===""||t==="-"||t==="–") return null; const v=Number(t); return Number.isFinite(v)?v:null; };
-const fieldCount = m => FIELDS.filter(f=>Array.isArray(f)&&has(m[f[0]])).length;
-const NF = FIELDS.filter(Array.isArray).length;
+const fieldCount = m => FIELDS.filter(f=>Array.isArray(f)&&!f[3]&&has(m[f[0]])).length;
+const NF = FIELDS.filter(f=>Array.isArray(f)&&!f[3]).length;
 
 function derive(m){
   const d = {};
@@ -322,39 +322,39 @@ function signals(){
   const add=(key,tone,title,body,imp,impL)=>out.push({key,tone,tag:{good:"Strength",warn:"Watch",bad:"Risk",info:"Note"}[tone],title,body,imp:imp||0,impL:impL||""});
   if(p && has(m.exams) && has(p.exams) && +p.exams>0){
     const ch=(m.exams-p.exams)/p.exams*100;
-    if(ch<=-10) add("volume","bad",`Exam volume fell ${pct(Math.abs(ch),0)}`,`${int(m.exams)} exams against ${int(p.exams)} in ${p.label}. Exams are the top of the funnel, so a drop here appears as fewer starts one to two months later.`, b?(p.exams-m.exams)*b.perExam:0,"production not booked");
-    else if(ch>=10) add("volume","good",`Exam volume grew ${pct(ch,0)}`,`${int(m.exams)} exams against ${int(p.exams)} in ${p.label}.`);
+    if(ch<=-10) add("volume","bad",`Exam volume fell ${pct(Math.abs(ch),0)}`,`${int(m.exams)} exams, against ${int(p.exams)} in ${p.label}. Fewer exams now can mean fewer starts in the coming months.`, b?(p.exams-m.exams)*b.perExam:0,"potential production");
+    else if(ch>=10) add("volume","good",`Exam volume grew ${pct(ch,0)}`,`${int(m.exams)} exams, against ${int(p.exams)} in ${p.label}.`);
   }
   if(has(m.keptRate)){
     const gap=n0(t.kept)-m.keptRate, ch=p&&has(p.keptRate)?m.keptRate-p.keptRate:0;
-    if(gap>0.5) add("kept","warn",`Kept exam rate ${pct(m.keptRate)} is ${gap.toFixed(1)} pts under target`,`Every missed exam is a consult that never happens. Closing the gap to ${pct(t.kept)} is worth the amount shown over a year.`, b?gap*b.ptKept:0,"per year");
-    else add("kept","good",`Kept exam rate ${pct(m.keptRate)}${ch>=2?`, up ${ch.toFixed(1)} pts`:""}`,`At or above the ${pct(t.kept)} target.${b?` Each point here is worth about ${usd(b.ptKept)} a year.`:""}`);
+    if(gap>0.5) add("kept","warn",`Kept exam rate ${pct(m.keptRate)} is ${gap.toFixed(1)} pts under target`,`Some missed exams are rescheduled. Reaching ${pct(t.kept)} could be worth about the amount shown over a year.`, b?gap*b.ptKept:0,"potential per year");
+    else add("kept","good",`Kept exam rate ${pct(m.keptRate)}${ch>=2?`, up ${ch.toFixed(1)} pts`:""}`,`At or above the ${pct(t.kept)} target.`);
   }
   if(has(m.convRate)){
     const gap=n0(t.conv)-m.convRate, ch=p&&has(p.convRate)?m.convRate-p.convRate:0;
-    if(gap>0.5) add("conv","warn",`Conversion ${pct(m.convRate)} is ${gap.toFixed(1)} pts under target`,`Patients are attending the exam but not starting. Closing the gap to ${pct(t.conv)} is worth the amount shown over a year.`, b?gap*b.ptConv:0,"per year");
-    else add("conv","good",`Conversion ${pct(m.convRate)}${ch>=3?`, up ${ch.toFixed(1)} pts`:""}`,`At or above the ${pct(t.conv)} target.${b?` Each point here is worth about ${usd(b.ptConv)} a year.`:""}`);
+    if(gap>0.5) add("conv","warn",`Conversion ${pct(m.convRate)} is ${gap.toFixed(1)} pts under target`,`Some of these patients may start in a later month. Reaching ${pct(t.conv)} could be worth about the amount shown over a year.`, b?gap*b.ptConv:0,"potential per year");
+    else add("conv","good",`Conversion ${pct(m.convRate)}${ch>=3?`, up ${ch.toFixed(1)} pts`:""}`,`At or above the ${pct(t.conv)} target.`);
   }
   if(d.priorShare!==null){
     const sh=d.priorShare, psh=pd?pd.priorShare:null;
-    if(sh<n0(t.prior)) add("verify","warn",`Only ${pct(sh,0)} of verifications were completed before the visit`,`${psh!==null?`${sh<psh?"Down":"Up"} from ${pct(psh,0)} in ${p.label}; same-day checks went from ${int(p.verSame)} to ${int(m.verSame)}. `:""}A same-day check leaves no time to fix coverage before the consult, which is where denials and delayed starts begin.`);
-    else add("verify","good",`${pct(sh,0)} of verifications were completed before the visit`,"Coverage problems are being found before the patient is in the chair.");
+    if(sh<n0(t.prior)) add("verify","warn",`${pct(sh,0)} of verifications were completed before the visit`,`${psh!==null?`${sh<psh?"Down":"Up"} from ${pct(psh,0)} in ${p.label}. `:""}Same-day checks can leave little time to resolve coverage questions before the consult.`);
+    else add("verify","good",`${pct(sh,0)} of verifications were completed before the visit`,`At or above the ${pct(t.prior)} target.`);
   }
   if(d.aob>0){
     const sh=n0(m.aobPrac)/d.aob*100, pa=pd?pd.aob:0, psh=pa?n0(p.aobPrac)/pa*100:null;
-    add("aob",sh>=50?"good":"warn",`${pct(sh,0)} of insurance benefit is assigned to the practice`,`${psh!==null?`${sh>=psh?"Up":"Down"} from ${pct(psh,0)} in ${p.label}. `:""}${usd(m.aobSub)} pays out to subscribers, so the practice has to collect it from the patient.`, sh>=50?0:n0(m.aobSub),"paid to subscribers");
+    add("aob",sh>=50?"good":"warn",`${pct(sh,0)} of insurance benefit is assigned to the practice`,`${psh!==null?`${sh>=psh?"Up":"Down"} from ${pct(psh,0)} in ${p.label}. `:""}${usd(m.aobSub)} is paid to subscribers and is collected through the patient.`, sh>=50?0:n0(m.aobSub),"paid to subscribers");
   }
   if(d.hasAR && d.insAR>0){
     const sh=d.insOver/d.insAR*100, mo=d.insColl>0?d.insOver/d.insColl:null, tone=sh>n0(t.insOver)+10?"bad":sh>n0(t.insOver)?"warn":"good";
-    add("insAR",tone,`${pct(sh,0)} of insurance A/R is overdue`,`${usd(d.insOver)} of ${usd(d.insAR)}.${mo?` Insurance posted ${usd(d.insColl)} this month; at that pace the overdue balance alone takes ${mo.toFixed(1)} months to clear.`:""}`, tone==="good"?0:d.insOver,"overdue");
+    add("insAR",tone,`${pct(sh,0)} of insurance A/R is overdue`,`${usd(d.insOver)} of ${usd(d.insAR)}.${mo?` At this month's insurance collections (${usd(d.insColl)}), clearing it would take about ${mo.toFixed(1)} months.`:""}`, tone==="good"?0:d.insOver,"overdue");
   }
   if(d.hasAR && d.patOver>0){
-    const s91=n0(m.pat91)/d.patOver*100, big=BUCKETS.map(k=>[k[1],n0(m["pat"+k[0]])]).sort((a,c)=>c[1]-a[1])[0], tone=s91>n0(t.pat91)?"warn":"good";
-    add("patAR",tone,`${usd(m.pat91)} of patient A/R is past 90 days`,`${pct(s91,0)} of patient overdue (${usd(d.patOver)}). The largest bucket is ${big[0]} at ${usd(big[1])}, which rolls toward 90 days unless it is followed up now.`, tone==="good"?0:n0(m.pat91)*n0(P().risk["91"])/100,"likely lost");
+    const s91=n0(m.pat91)/d.patOver*100, tone=s91>n0(t.pat91)?"warn":"good";
+    add("patAR",tone,`${usd(m.pat91)} of patient A/R is past 90 days`,`${pct(s91,0)} of patient overdue (${usd(d.patOver)}). Older balances are usually harder to collect.`, tone==="good"?0:n0(m.pat91)*n0(P().risk["91"])/100,"at risk");
   }
   if(has(m.denialRate)){
     const tone=+m.denialRate<=n0(t.denial)?(n0(m.pending)>0?"info":"good"):+m.denialRate<n0(t.denial)*3?"warn":"bad";
-    add("claims",tone,+m.denialRate===0?"No claims denied":`Denial rate ${pct(m.denialRate)}`,`${int(m.submitted)} submitted, ${int(m.pending)} pending.${n0(m.pending)>0?" Pending claims are listed with the action each one needs.":""}`);
+    add("claims",tone,+m.denialRate===0?"No claims denied":`Denial rate ${pct(m.denialRate)}`,`${int(m.submitted)} submitted, ${int(m.pending)} pending.`);
   }
   return out;
 }
@@ -384,13 +384,13 @@ function trend(vals, labels, f, target){
     <path d="${d}L${x(e[0])} ${H-B}L${x(ok[0][0])} ${H-B}Z" fill="${C.soft}"/><path d="${d}" fill="none" stroke="${C.s1}" stroke-width="2" stroke-linejoin="round"/>
     ${ok.map((p,i)=>`<circle cx="${x(p[0])}" cy="${y(p[1])}" r="${i===ok.length-1?4:2.5}" fill="${C.s1}" stroke="#fff" stroke-width="1.5"/>${tx(x(p[0]),y(p[1])-7,f(p[1]),{a:i===0?"start":i===ok.length-1?"end":"middle",s:9.5,w:i===ok.length-1?700:400,f:i===ok.length-1?C.ink:C.ink2,h:1})}${tx(x(p[0]),H-5,labels[p[0]].slice(0,3),{a:i===0?"start":i===ok.length-1?"end":"middle",s:9})}`).join("")}</svg>`;
 }
-function stack(ms, series, f){
-  const W=340,H=165,L=8,R=8,T=18,B=20, tot=ms.map(m=>series.reduce((a,s)=>a+n0(m[s.k]),0)), ymax=Math.max(1,...tot)*1.02;
+function stack(ms, series, f, H=165, cnt=false){
+  const W=340,L=8,R=8,T=18,B=20, tot=ms.map(m=>series.reduce((a,s)=>a+n0(m[s.k]),0)), ymax=Math.max(1,...tot)*1.02;
   const gw=(W-L-R)/ms.length, bw=Math.min(54,gw*0.55), y=v=>T+(H-T-B)*(1-v/ymax); let g=`<line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" stroke="${C.rule}"/>`;
   ms.forEach((m,i)=>{ const cx=L+gw*(i+.5); let acc=0;
     series.forEach((s,j)=>{ const v=n0(m[s.k]); if(v<=0) return; const y0=y(acc)-(acc>0?2:0), y1=y(acc+v), topSeg=series.slice(j+1).every(z=>n0(m[z.k])<=0);
       g+= topSeg ? rbar(cx-bw/2,y0,y1,bw,s.c,`${m.label} · ${s.n}\n${f(v)} (${pct(v/tot[i]*100,0)})`) : `<rect x="${cx-bw/2}" y="${y1}" width="${bw}" height="${Math.max(0,y0-y1)}" fill="${s.c}" data-tip="${esc(`${m.label} · ${s.n}\n${f(v)} (${pct(v/tot[i]*100,0)})`)}"/>`;
-      if(y0-y1>=15) g+=tx(cx,(y0+y1)/2+3.5,pct(v/tot[i]*100,0),{a:"middle",s:9.5,w:700,f:"#ffffff"}); acc+=v; });
+      if(y0-y1>=15) g+=tx(cx,(y0+y1)/2+3.5,cnt?`${f(v)} · ${pct(v/tot[i]*100,0)}`:pct(v/tot[i]*100,0),{a:"middle",s:9.5,w:700,f:"#ffffff"}); acc+=v; });
     g+=tx(cx,y(tot[i])-5,f(tot[i]),{a:"middle",s:10,w:700,f:C.ink})+tx(cx,H-6,m.label,{a:"middle",s:9.5});
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Stacked bars by month">${g}</svg>`;
@@ -426,28 +426,6 @@ function cum(pr){
 }
 const hbars=(items,f,col)=>{ const mx=Math.max(1,...items.map(i=>i.v)); return items.map(i=>`<div class="hb"><span>${esc(i.l)}</span><div class="track"><i style="width:${Math.max(0.5,i.v/mx*100)}%;background:${col}"></i></div><span class="v">${f(i.v)}</span></div>`).join(""); };
 
-/* ================= narrative ================= */
-function narrative(){
-  const m=last(), p=prev()||{}, d=derive(m), pd=prev()?derive(p):{}, mL=m.label, pL=p.label, o={};
-  const u0=v=>usd(v, Number.isInteger(+v)?0:2), u2=v=>usd(v,2);
-  const cmp=(cur,old,f,what)=> !has(old) ? `${what} ${f(cur)} in ${mL}.` : `${what} ${+cur>+old?"increased to":+cur<+old?"decreased to":"held at"} ${f(cur)}, from ${f(old)} in ${pL}.`;
-  if(has(m.exams)) o.exams=["Exam volume",cmp(m.exams,p.exams,int,"Exam appointments")];
-  if(has(m.keptRate)) o.kept=["Retention",cmp(m.keptRate,p.keptRate,pct,"The kept exam rate")+(has(p.keptRate)&&m.keptRate>p.keptRate&&+m.exams<+p.exams?" Retention improved even as volume fell.":"")];
-  if(d.verified) o.verify=["Verification",`${int(d.withIns)} insured patients (${int(n0(m.insSingle))} single, ${int(n0(m.insDual))} dual coverage). LettuceOps completed ${int(d.verified)} verifications: ${int(n0(m.verPrior))} before the visit, ${int(n0(m.verSame))} same-day and ${int(n0(m.verPost))} post-exam.`];
-  if(has(m.starts)) o.starts=["Starts",cmp(m.starts,p.starts,int,"Treatment starts")+(has(m.convRate)?" "+cmp(m.convRate,p.convRate,v=>pct(v,2),"Conversion"):"")];
-  if(d.aob) o.aob=["Assignment of benefits",cmp(m.aobPrac,p.aobPrac,u0,"Benefit assigned to the practice")+" "+cmp(m.aobSub,p.aobSub,u0,"Benefit paid to subscribers")];
-  if(d.pipeline||has(m.denialRate)) o.claims=["Claims",cmp(d.pipeline,pd.pipeline,int,"The claim pipeline")+` ${int(n0(m.submitted))} submitted, ${int(n0(m.pending))} pending.`+(has(m.denialRate)?` Denial rate ${pct(m.denialRate)}${has(p.denialRate)&&+p.denialRate!==+m.denialRate?`, from ${pct(p.denialRate)}`:""}; re-submission rate ${pct(n0(m.resubRate))}.`:"")];
-  if(d.net!==null) o.prod=["Production",`Gross production ${u2(m.gross)} less adjustments of ${u2(n0(m.adj))} gives net production of ${u2(d.net)}${n0(m.starts)?`, or ${usd(d.net/m.starts)} per start`:""}.`];
-  if(d.hasPost){ const pm=[["Finix",n0(m.patFinix)],["Elite",n0(m.patElite)],["Check",n0(m.patCheck)],["Cash",n0(m.patCash)]].sort((a,c)=>c[1]-a[1])[0];
-    o.coll=["Collections",`${u2(d.coll)} posted: ${u2(d.patColl)} from patients and ${u2(d.insColl)} from insurance. ${pm[0]} carried ${pct(pm[1]/(d.patColl||1)*100,0)} of patient payments.`+(d.net?` Collections equal ${pct(d.coll/d.net*100,0)} of the month's net production.`:"")]; }
-  if(d.hasAR){ const top=pre=>BUCKETS.map(b=>[b[1],n0(m[pre+b[0]])]).sort((a,c)=>c[1]-a[1])[0], ti=top("ins"), tp=top("pat");
-    o.insAR=["Insurance A/R",`${u2(d.insAR)} outstanding, ${u2(d.insOver)} of it overdue. The largest overdue bucket is ${ti[0].toLowerCase()} at ${u2(ti[1])}.`];
-    o.patAR=["Patient A/R",`${u2(d.patAR)} outstanding, ${u2(d.patOver)} of it overdue. The largest overdue bucket is ${tp[0].toLowerCase()} at ${u2(tp[1])}${tp[0]!=="91+"&&n0(m.pat91)?`, with ${u2(m.pat91)} past 90 days`:""}.`];
-    o.fr=["Future revenue",`${u2(n0(m.insFR)+n0(m.patFR))} is contracted and not yet due.`]; }
-  return o;
-}
-const say = keys => { const n=narrative(), li=keys.filter(k=>n[k]).map(k=>`<li><b>${n[k][0]}.</b> ${esc(n[k][1])}</li>`).join(""); return li?`<ul class="say">${li}</ul>`:""; };
-
 /* ================= report ================= */
 function renderReport(){
   const el=$("#view-report"), pr=P(), ms=pr.months.slice(-3), m=last(), p=prev(), d=derive(m), pd=p?derive(p):null, b=baseline(), h=health(), B=DB.brand;
@@ -471,84 +449,79 @@ function renderReport(){
   const finding=s=>`<div class="find"><span><span class="pill ${s.tone}">${s.tag}</span></span><div><h4>${esc(s.title)}</h4><p class="muted">${esc(s.body)}</p>${via(s)}</div><div class="imp">${s.imp>0?`<b>${usdK(s.imp)}</b><span>${s.impL}</span>`:""}</div></div>`;
 
   /* 1 — executive brief */
-  page("exec","Executive brief",`${esc(pr.name)}: ${esc(m.label)} ${m.year||""}`,
-    h.score===null?"":`The practice scores <b>${h.score} of 100</b> on the Revenue Health Index this month.${opp>0?` The analysis identifies <b>${usdK(opp)}</b> of additional revenue over the next 12 months that is within the practice's own recent performance range.`:""}`,
+  page("exec","Summary",`${esc(pr.name)}: ${esc(m.label)} ${m.year||""}`,
+    h.score===null?"":`The practice scores <b>${h.score} of 100</b> on the Revenue Health Index this month.${opp>0?` The numbers point to as much as <b>${usdK(opp)}</b> of potential additional revenue over the next 12 months.`:""}`,
     `<div class="cols w">
       <div class="card"><span class="eyebrow">Revenue Health Index</span>
         <div class="idx">${ring(h.score??0,h.band[1])}<div style="flex:1;min-width:0"><span class="pill ${h.band[1]}">${h.band[0]}</span>
           ${h.comps.map(c=>`<div class="meter" style="grid-template-columns:118px 42px minmax(0,1fr)"><span>${c.name}</span><span class="v">${pct(c.val,0)}</span><div class="track"><i style="width:${Math.max(3,c.score)}%;background:${c.score>=85?C.good:c.score>=50?C.warn:C.bad}"></i></div></div>`).join("")}</div></div>
         <p class="small muted">Bars show progress toward this practice's targets (${h.comps.map(c=>`${c.lower?"≤":"≥"}${c.target}%`).join(", ")}).</p></div>
-      <div class="card t"><span class="eyebrow">12-month opportunity identified</span><div class="tile" style="border:0;padding:0"><span class="v" style="font-size:38px;color:var(--brand)">${opp?usdK(opp):"–"}</span></div>
-        <p class="muted">${proj?`${usdK(proj.delta)} in net production if the practice runs at ${int(pr.scn.exams)} exams, ${pct(pr.scn.kept)} kept and ${pct(pr.scn.conv)} conversion: its best recent kept rate and conversion at today's exam volume${rec>0?`, plus ${usdK(rec)} recovered from overdue A/R`:""}.`:"Add production data to size the opportunity."}</p>
+      <div class="card t"><span class="eyebrow">Potential 12-month upside</span><div class="tile" style="border:0;padding:0"><span class="v" style="font-size:38px;color:var(--brand)">${opp?usdK(opp):"–"}</span></div>
+        <p class="muted">${proj?`About ${usdK(proj.delta)} in net production if kept rate (${pct(pr.scn.kept)}) and conversion (${pct(pr.scn.conv)}) held at their best recent levels${rec>0?`, plus about ${usdK(rec)} from overdue A/R`:""}. An estimate, not a forecast.`:"Add production data to size the opportunity."}</p>
         ${b?`<p class="small muted">Current run rate: ${usdK(b.annual)} net production a year.</p>`:""}</div>
     </div>
     <div class="cols c3">${tile("Exams scheduled",int(m.exams),delta(m.exams,p?.exams))}${tile("Kept exam rate",pct(m.keptRate),delta(m.keptRate,p?.keptRate,"pts"))}${tile("Treatment starts",int(m.starts),delta(m.starts,p?.starts))}
       ${tile("Conversion",pct(m.convRate),delta(m.convRate,p?.convRate,"pts"))}${tile("Net production",d.net!==null?usdK(d.net):"–",pd&&pd.net!==null?delta(d.net,pd.net,"$"):n0(m.starts)&&d.net?usd(d.net/m.starts)+" per start":"")}${tile("Collections posted",d.hasPost?usdK(d.coll):"–",pd&&pd.hasPost?delta(d.coll,pd.coll,"$"):d.net?pct(d.coll/d.net*100,0)+" of net production":"")}</div>
-    <div class="block"><h3>What needs attention, and what is working</h3><div>${sig.slice(0,3).map(finding).join("")}</div></div>`);
+    <div class="block"><h3>What stands out this month</h3><div>${sig.slice(0,3).map(finding).join("")}</div></div>`);
 
-  /* 2 — funnel */
+  /* 2 — performance and future revenue */
   const labs=pr.months.slice(-6).map(x=>x.label), tr=(k,t)=>trend(pr.months.slice(-6).map(x=>x[k]),labs,k.endsWith("Rate")?v=>pct(v):int,t);
-  const noShow=d.kept!==null?m.exams-d.kept:null, yieldPer=b&&d.kept?b.starts/(b.exams*b.kept/100)*b.value:null;
-  page("funnel","Patient funnel · Lettuce Verify","From scheduled exam to treatment start",
-    b?`Each exam on the schedule is worth about <b>${usd(b.perExam)}</b> in net production at the current yield. This page shows where exams turn into starts and where they are lost.`:"",
-    `<div class="cols w"><div class="block"><h3>${esc(m.label)} funnel</h3><div class="funnel">
+  const noShow=d.kept!==null?Math.round(m.exams-d.kept):null, fr=n0(m.insFR)+n0(m.patFR), sp=has(m.startsPrior)?Math.min(n0(m.startsPrior),n0(m.starts)):null;
+  page("perf","1 · Performance",`How ${esc(m.label)} performed`,
+    `<b>${int(m.exams)}</b> exams scheduled, <b>${int(m.starts)}</b> treatment starts${d.net!==null?` and <b>${usd(d.net)}</b> in net production`:""}${d.hasAR?`, with <b>${usdK(fr)}</b> of contracted revenue still to come`:""}.`,
+    `<div class="cols w"><div class="block"><h3>From exam to start</h3><div class="funnel">
         <div class="fn"><span class="l">Exams scheduled</span><div class="bar" style="width:100%;background:${C.s1}">${int(m.exams)}</div></div>
-        ${noShow!==null?`<div class="leak">${noShow.toFixed(0)} did not attend${yieldPer?` · about ${usd(noShow*yieldPer)} in expected production`:""}</div>
-        <div class="fn"><span class="l">Kept exams<small>${pct(m.keptRate)} of scheduled</small></span><div class="bar" style="width:${clamp(m.keptRate,5,100)}%;background:${C.s1};opacity:.82">${d.kept.toFixed(0)}</div></div>`:""}
-        ${has(m.starts)&&n0(m.exams)?`<div class="leak">${d.kept!==null?`${Math.max(0,d.kept-m.starts).toFixed(0)} attended but did not start this month`:""}</div>
-        <div class="fn"><span class="l">Treatment starts<small>${pct(m.convRate)} conversion</small></span><div class="bar" style="width:${clamp(m.starts/m.exams*100,5,100)}%;background:${C.s3}">${int(m.starts)}</div></div>`:""}
+        ${noShow!==null?`<div class="fn"><span class="l">Kept exams<small>${pct(m.keptRate)} of scheduled</small></span><div class="bar" style="width:${clamp(m.keptRate,5,100)}%;background:${C.s1};opacity:.8">${Math.round(d.kept)}</div></div>`:""}
+        ${has(m.starts)&&n0(m.exams)?`<div class="fn"><span class="l">Treatment starts<small>${pct(m.convRate)} conversion</small></span><div style="display:flex;gap:2px;width:${clamp(m.starts/m.exams*100,8,100)}%">
+          <div class="bar" style="flex:${sp!==null?Math.max(1,m.starts-sp):1};background:${C.s3}">${sp!==null?int(m.starts-sp):int(m.starts)}</div>${sp?`<div class="bar" style="flex:${sp};background:${C.s3};opacity:.6;border-radius:0 4px 4px 0">${int(sp)}</div>`:""}</div></div>`:""}
+        <div class="leak">${sp!==null?`${int(m.starts-sp)} starts from this month's exams, ${int(sp)} from exams in earlier months.`:"Starts can include patients examined in earlier months."}${noShow?` ${noShow} scheduled exam${noShow>1?"s were":" was"} not kept${b?`; at the current yield an exam is worth roughly ${usd(b.perExam)}`:""}.`:""}</div>
       </div></div>
-      <div class="block"><h3>When insurance was verified</h3><div class="legend"><span><i style="background:${C.s1}"></i>Before the visit</span><span><i style="background:${C.s2}"></i>Same day</span><span><i style="background:${C.s3}"></i>Post-exam</span></div>
-        ${stack(ms,[{k:"verPrior",n:"Before the visit",c:C.s1},{k:"verSame",n:"Same day",c:C.s2},{k:"verPost",n:"Post-exam",c:C.s3}],int)}</div></div>
-    ${say(["exams","kept","starts"])}
+      ${d.net!==null?`<div class="block"><h3>Gross to net production</h3>${bridge(m,d)}</div>`:""}</div>
+    ${d.net!==null?`<div class="cols c4">${tile("Starts (with insurance)",`${int(m.starts)} (${int(m.startsIns)})`)}${tile("Same-day starts",int(m.sds),n0(m.starts)&&has(m.sds)?pct(m.sds/m.starts*100,0)+" of starts":"")}${tile("Pay-in-full cases",int(m.payInFull),n0(m.starts)&&has(m.payInFull)?pct(m.payInFull/m.starts*100,0)+" of starts":"")}${tile("Initial deposit (mode)",usd(m.avgDeposit),"most common amount")}</div>`:""}
+    ${d.hasAR?`<div class="card t"><div class="cols w" style="align-items:center"><div><span class="eyebrow">Revenue already contracted, not yet due</span><div class="tile" style="border:0;padding:0"><span class="v" style="font-size:32px;color:var(--brand)">${usd(fr)}</span></div><span class="muted">Payments scheduled under existing treatment contracts.</span></div>
+      <div>${hbars([{l:"Patient plans",v:n0(m.patFR)},{l:"Insurance",v:n0(m.insFR)}],v=>usd(v),C.s3)}</div></div></div>`:""}
     <div class="block"><h3>Trend <span class="muted" style="font-weight:400">· dashed line is the practice target</span></h3><div class="cols c4">
       <div class="card"><span class="eyebrow">Exams scheduled</span>${tr("exams")}</div><div class="card"><span class="eyebrow">Kept exam rate</span>${tr("keptRate",pr.targets.kept)}</div>
-      <div class="card"><span class="eyebrow">Treatment starts</span>${tr("starts")}</div><div class="card"><span class="eyebrow">Conversion</span>${tr("convRate",pr.targets.conv)}</div></div></div>
-    <div class="cols w"><table><thead><tr><th>Verification</th>${cols3}</tr></thead><tbody>
-      ${row("With insurance",(x,dd)=>int(dd.withIns),"sec")}${row("Single coverage",x=>int(x.insSingle),"sub")}${row("Dual coverage",x=>int(x.insDual),"sub")}
-      ${row("Verified by LettuceOps",(x,dd)=>int(dd.verified),"sec")}${row("Before the visit",x=>int(x.verPrior),"sub")}${row("Same day",x=>int(x.verSame),"sub")}${row("Post-exam",x=>int(x.verPost),"sub")}</tbody></table>
-      <div>${say(["verify"])}${sig.filter(s=>s.key==="verify").map(s=>`<div class="card t" style="margin-top:8px"><span><span class="pill ${s.tone}">${s.tag}</span></span><b>${esc(s.title)}</b><span class="muted">${esc(s.body)}</span>${via(s)}</div>`).join("")}</div></div>`);
+      <div class="card"><span class="eyebrow">Treatment starts</span>${tr("starts")}</div><div class="card"><span class="eyebrow">Conversion</span>${tr("convRate",pr.targets.conv)}</div></div></div>`);
 
-  /* 3 — claims */
-  page("claims","Claims & benefits · Lettuce Claim","Claims pipeline and assignment of benefits",
-    d.aob?`<b>${pct(n0(m.aobPrac)/d.aob*100,0)}</b> of insurance benefit is assigned to the practice. Benefit paid to the subscriber has to be collected from the patient, so this share decides how much insurance money arrives without a second collection step.`:"",
-    `<div class="cols"><div class="block"><h3>Who the benefit is paid to</h3><div class="legend"><span><i style="background:${C.s1}"></i>Practice</span><span><i style="background:${C.s2}"></i>Subscriber</span></div>
-        ${stack(ms,[{k:"aobPrac",n:"Assigned to practice",c:C.s1},{k:"aobSub",n:"Paid to subscriber",c:C.s2}],usdK)}</div>
-      <div class="block"><h3>Claims by status</h3><div class="legend"><span><i style="background:${C.s1}"></i>Submitted</span><span><i style="background:${C.s2}"></i>Pending</span></div>
-        ${stack(ms,[{k:"submitted",n:"Submitted",c:C.s1},{k:"pending",n:"Pending",c:C.s2}],int)}</div></div>
-    <table><thead><tr><th>Claim</th>${cols3}</tr></thead><tbody>
-      ${row("Treatment starts",x=>int(x.starts))}${row("Starts conversion rate",x=>pct(x.convRate,2))}${row("AOB – subscriber",x=>usd(x.aobSub,2))}${row("AOB – practice",x=>usd(x.aobPrac,2))}
-      ${row("Claim pipeline",(x,dd)=>int(dd.pipeline),"sec")}${row("Submitted",x=>int(x.submitted),"sub")}${row("Pending",x=>int(x.pending),"sub")}${row("Denial rate",x=>pct(x.denialRate),"sub")}${row("Re-submit rate",x=>pct(x.resubRate),"sub")}</tbody></table>
-    ${say(["aob","claims"])}
+  /* 3 — insurance */
+  const insB=BUCKETS.map(k=>({l:k[1],v:n0(m["ins"+k[0]])}));
+  if(d.verified||d.aob||d.pipeline) page("ins","2 · Insurance","Verification, benefits and claims",
+    [d.priorShare!==null?`<b>${pct(d.priorShare,0)}</b> of verifications were completed before the visit`:"", d.aob?`<b>${pct(n0(m.aobPrac)/d.aob*100,0)}</b> of benefit is assigned to the practice`:"", has(m.denialRate)?`the denial rate was <b>${pct(m.denialRate)}</b>`:""].filter(Boolean).join(", ").replace(/^./,c=>c.toUpperCase())+".",
+    `<div class="cols"><div class="block"><h3>When coverage was verified</h3><div class="legend"><span><i style="background:${C.s1}"></i>Before the visit</span><span><i style="background:${C.s2}"></i>Same day</span><span><i style="background:${C.s3}"></i>Post-exam</span></div>
+        ${stack(ms,[{k:"verPrior",n:"Before the visit",c:C.s1},{k:"verSame",n:"Same day",c:C.s2},{k:"verPost",n:"Post-exam",c:C.s3}],int,150,true)}</div>
+      <div class="block"><h3>Who the benefit is paid to</h3><div class="legend"><span><i style="background:${C.s1}"></i>Practice</span><span><i style="background:${C.s2}"></i>Subscriber</span></div>
+        ${stack(ms,[{k:"aobPrac",n:"Assigned to practice",c:C.s1},{k:"aobSub",n:"Paid to subscriber",c:C.s2}],usdK,150)}</div></div>
+    <div class="cols"><div class="block"><h3>Claims by status</h3><div class="legend"><span><i style="background:${C.s1}"></i>Submitted</span><span><i style="background:${C.s2}"></i>Pending</span></div>
+        ${stack(ms,[{k:"submitted",n:"Submitted",c:C.s1},{k:"pending",n:"Pending",c:C.s2}],int,150)}</div>
+      ${d.hasAR?`<div class="block"><h3>Insurance A/R overdue, by age</h3>${hbars(insB,v=>usd(v),C.s1)}
+        <p class="small muted"><b>${usd(d.insOver)}</b> overdue of ${usd(d.insAR)} total insurance A/R.</p></div>`:""}</div>
+    <table><thead><tr><th>Insurance at a glance</th>${cols3}</tr></thead><tbody>
+      ${row("Patients with insurance",(x,dd)=>int(dd.withIns))}${row("Verified by LettuceOps",(x,dd)=>int(dd.verified))}${row("AOB – practice",x=>usd(x.aobPrac,2))}${row("AOB – subscriber",x=>usd(x.aobSub,2))}
+      ${row("Claims submitted",x=>int(x.submitted))}${row("Claims pending",x=>int(x.pending))}${row("Denial rate",x=>pct(x.denialRate))}${row("Re-submit rate",x=>pct(x.resubRate))}</tbody></table>
     ${m.pendingText?`<div class="card"><h3>Pending claims: action required</h3>${m.pendingText.split("\n").filter(Boolean).map(l=>`<p>${esc(l)}</p>`).join("")}</div>`:""}`);
 
-  /* 4 — production & collections */
-  if(d.net!==null||d.hasPost) page("collect","Production & collections · Lettuce Collect","What was produced and what was collected",
-    d.net!==null&&d.hasPost?`The practice produced <b>${usd(d.net)}</b> net and posted <b>${usd(d.coll)}</b> in payments. Production is contract value earned this month; collections are cash received against this and earlier contracts.`:"",
-    `<div class="cols c4">${tile("Starts (with insurance)",`${int(m.starts)} (${int(m.startsIns)})`)}${tile("Same-day starts",int(m.sds),n0(m.starts)&&has(m.sds)?pct(m.sds/m.starts*100,0)+" of starts":"")}${tile("Pay-in-full cases",int(m.payInFull),n0(m.starts)&&has(m.payInFull)?pct(m.payInFull/m.starts*100,0)+" of starts":"")}${tile("Initial deposit (mode)",usd(m.avgDeposit),"most common amount")}</div>
-    <div class="cols">${d.net!==null?`<div class="block"><h3>Gross to net production</h3>${bridge(m,d)}</div>`:""}
-      ${d.hasPost?`<div class="block"><h3>Payments posted by channel</h3>
-        <span class="eyebrow">Patient · ${usd(d.patColl,2)}</span>${hbars([["Finix","patFinix"],["Elite","patElite"],["Check","patCheck"],["Cash","patCash"]].map(r=>({l:`${r[0]} (${int(n0(m[r[1]+"N"]))})`,v:n0(m[r[1]])})),v=>usd(v,2),C.s1)}
-        <span class="eyebrow" style="margin-top:6px">Insurance · ${usd(d.insColl,2)}</span>${hbars([{l:`Check (${int(n0(m.insCheckN))})`,v:n0(m.insCheck)},{l:`Virtual card (${int(n0(m.insVCN))})`,v:n0(m.insVC)}],v=>usd(v,2),C.s2)}
-        <p class="small muted">Counts in brackets are payments posted. Bars within each group share a scale.</p></div>`:""}</div>
-    ${say(["prod","coll","fr"])}`);
-
-  /* 5 — A/R */
-  if(d.hasAR) page("ar","Accounts receivable · Lettuce Collect","A/R health and what is likely to be lost",
-    `<b>${usd(d.insOver+d.patOver)}</b> is overdue across insurance and patient accounts. At the loss rates below, about <b>${usd(d.atRisk)}</b> of it will not be collected unless it is followed up.`,
-    `<div class="cols w"><div class="block"><h3>Overdue balance by age</h3><div class="legend"><span><i style="background:${C.s1}"></i>Insurance</span><span><i style="background:${C.s2}"></i>Patient</span></div>${aging(m)}</div>
-      <div class="block"><h3>Expected loss by age</h3><table><thead><tr><th>Bucket</th><th>Overdue</th><th>Loss rate</th><th>At risk</th></tr></thead><tbody>
+  /* 4 — cash flow */
+  if(d.hasPost||d.hasAR) page("cash","3 · Cash flow","What was collected and what is still owed",
+    `${d.hasPost?`<b>${usd(d.coll)}</b> was collected this month. `:""}${d.hasAR?`<b>${usd(d.insOver+d.patOver)}</b> is overdue; at the assumed loss rates about <b>${usd(d.atRisk)}</b> of that may not be collected.`:""}`,
+    `${d.hasPost?`<div class="cols c4">${tile("Collections posted",usd(d.coll))}${tile("From patients",usd(d.patColl),pct(d.patColl/d.coll*100,0)+" of collections")}${tile("From insurance",usd(d.insColl),pct(d.insColl/d.coll*100,0)+" of collections")}${tile("Collected vs produced",d.net?pct(d.coll/d.net*100,0):"–","of this month's net production")}</div>`:""}
+    <div class="cols">${d.hasPost?`<div class="block"><h3>Payments posted by channel</h3>
+        <span class="eyebrow">Patient</span>${hbars([["Finix","patFinix"],["Elite","patElite"],["Check","patCheck"],["Cash","patCash"]].map(r=>({l:`${r[0]} (${int(n0(m[r[1]+"N"]))})`,v:n0(m[r[1]])})),v=>usd(v,2),C.s1)}
+        <span class="eyebrow" style="margin-top:4px">Insurance</span>${hbars([{l:`Check (${int(n0(m.insCheckN))})`,v:n0(m.insCheck)},{l:`Virtual card (${int(n0(m.insVCN))})`,v:n0(m.insVC)}],v=>usd(v,2),C.s2)}
+        <p class="small muted">Brackets show the number of payments. Each group has its own scale.</p></div>`:""}
+      ${d.hasAR?`<div class="block"><h3>Overdue balance by age</h3><div class="legend"><span><i style="background:${C.s1}"></i>Insurance</span><span><i style="background:${C.s2}"></i>Patient</span></div>${aging(m)}</div>`:""}</div>
+    ${d.hasAR?`<div class="cols"><table><thead><tr><th>A/R</th><th>Insurance</th><th>Patient</th></tr></thead><tbody>
+        <tr class="tot"><td>Total A/R</td><td>${usd(d.insAR,2)}</td><td>${usd(d.patAR,2)}</td></tr><tr><td>Not yet due</td><td>${usd(m.insFR,2)}</td><td>${usd(m.patFR,2)}</td></tr><tr class="sec"><td>Total overdue</td><td>${usd(d.insOver,2)}</td><td>${usd(d.patOver,2)}</td></tr>
+        ${BUCKETS.map(k=>`<tr class="sub"><td>${k[1]}</td><td>${usd(m["ins"+k[0]],2)}</td><td>${usd(m["pat"+k[0]],2)}</td></tr>`).join("")}</tbody></table>
+      <div class="block"><table><thead><tr><th>Overdue, by age</th><th>Balance</th><th>Loss rate</th><th>At risk</th></tr></thead><tbody>
         ${BUCKETS.map(k=>{ const v=n0(m["ins"+k[0]])+n0(m["pat"+k[0]]); return `<tr><td>${k[1]}</td><td>${usd(v)}</td><td>${n0(pr.risk[k[0]])}%</td><td>${usd(v*n0(pr.risk[k[0]])/100)}</td></tr>`; }).join("")}
         <tr class="tot"><td>Total</td><td>${usd(d.insOver+d.patOver)}</td><td></td><td>${usd(d.atRisk)}</td></tr></tbody></table>
-        <p class="small muted">Loss rates are planning assumptions set in Branding &amp; products, not this practice's measured write-off history.</p></div></div>
-    <div class="cols">${[["Insurance A/R","ins",d.insAR,d.insOver,m.insFR],["Patient A/R","pat",d.patAR,d.patOver,m.patFR]].map(a=>`<table><thead><tr><th>${a[0]}</th><th>${esc(m.label)}</th></tr></thead><tbody>
-      ${one("Total A/R",usd(a[2],2),"tot")}${one("Future revenue (not yet due)",usd(a[4],2))}${one("Total overdue",usd(a[3],2),"sec")}${BUCKETS.map(k=>one(k[1],usd(m[a[1]+k[0]],2),"sub")).join("")}</tbody></table>`).join("")}</div>
-    ${say(["insAR","patAR"])}`);
+        <p class="small muted">Loss rates are planning assumptions, not this practice's measured write-off history.</p></div></div>`:""}`);
 
   /* 6 — outlook */
-  if(b) page("outlook","12-month outlook","How these numbers shape the next year",
-    `At the current pace the practice produces <b>${usdK(b.annual)}</b> in net production a year. The scenario below holds exam volume steady and asks what happens if kept rate and conversion match the best recent month.`,
-    `<div class="cols c4">${tile("One point of kept rate",usdK(b.ptKept),"net production per year")}${tile("One point of conversion",usdK(b.ptConv),"net production per year")}${tile("One more exam a month",usdK(b.perExam*12),"net production per year")}${tile("Future revenue on the books",d.hasAR?usdK(n0(m.insFR)+n0(m.patFR)):"–","contracted, not yet due")}</div>
+  if(b) page("outlook","4 · Outlook","What this could mean over the next year",
+    `At the current pace the practice would produce about <b>${usdK(b.annual)}</b> in net production a year. The scenario holds exam volume steady and lifts kept rate and conversion to their best recent levels.`,
+    `<div class="cols c4">${tile("One point of kept rate","≈ "+usdK(b.ptKept),"net production per year")}${tile("One point of conversion","≈ "+usdK(b.ptConv),"net production per year")}${tile("One more exam a month","≈ "+usdK(b.perExam*12),"net production per year")}${tile("Revenue already contracted",d.hasAR?usdK(n0(m.insFR)+n0(m.patFR)):"–","not yet due")}</div>
     <div class="levers screen">
       ${[["exams","Exams / month",Math.round(b.exams*0.6),Math.round(b.exams*1.5),1],["kept","Kept rate",70,100,0.1],["conv","Conversion",40,100,0.1],["cut","Aged A/R recovered",0,100,5]].map(l=>`<div class="lever"><label for="lv-${l[0]}">${l[1]}<output>${l[0]==="exams"?int(pr.scn[l[0]]):pct(pr.scn[l[0]],l[0]==="cut"?0:1)}</output></label><input type="range" id="lv-${l[0]}" data-k="${l[0]}" min="${l[2]}" max="${l[3]}" step="${l[4]}" value="${pr.scn[l[0]]}"></div>`).join("")}
     </div>
@@ -559,12 +532,12 @@ function renderReport(){
         <tr><td>Net production, 12 mo</td><td>${usdK(proj.base)}</td><td>${usdK(proj.scn)}</td></tr><tr><td>Overdue A/R recovered</td><td>–</td><td>${usdK(rec)}</td></tr>
         <tr class="tot"><td>Difference over 12 months</td><td></td><td>${opp>=0?"+":""}${usdK(opp)}</td></tr></tbody></table>
         <button class="screen" id="scnReset" type="button" style="align-self:flex-start">Reset to best recent month</button></div></div>
-    <div class="card t"><span class="eyebrow">Method</span><p class="muted">Baseline is the ${b.n}-month average (${esc(b.from)}${b.n>1?" to "+esc(b.to):""}): ${b.exams.toFixed(1)} exams, ${pct(b.kept)} kept, ${pct(b.conv)} conversion, ${b.starts.toFixed(1)} starts, and ${usd(b.value)} net production per start (${esc(b.valueMonth)}). Starts scale in proportion to exams, kept rate and conversion. Scenario changes phase in over ${RAMP} months. Production is contract value; cash arrives over each patient's payment plan. This is a planning model, not a forecast of record.</p></div>`);
+    <div class="card t"><span class="eyebrow">Method</span><p class="muted">Baseline is the ${b.n}-month average (${esc(b.from)}${b.n>1?" to "+esc(b.to):""}): ${b.exams.toFixed(1)} exams, ${pct(b.kept)} kept, ${pct(b.conv)} conversion, ${b.starts.toFixed(1)} starts, and ${usd(b.value)} net production per start (${esc(b.valueMonth)}). Starts are assumed to scale with exams, kept rate and conversion; in practice some starts come from exams in earlier months. Scenario changes phase in over ${RAMP} months. Production is contract value; cash arrives over each patient's payment plan. This is a planning model, not a forecast of record.</p></div>`);
 
   /* 7 — next steps */
   const withP=issues.map(s=>({s,q:productFor(s.key)})), spot=withP.find(x=>x.q&&x.q.ready), rest=withP.filter(x=>x!==spot), always=DB.products.filter(x=>x.always&&x.name);
-  page("next","Recommended next steps","Where to act first",
-    issues.length?`${issues.length} finding${issues.length>1?"s":""} this month ${issues.length>1?"have":"has"} a measurable revenue effect. They are ranked by severity and size.`:"No findings need action this month. The practice is at or above target on every measure reported.",
+  page("next","5 · Problems and solutions","Where to act first",
+    issues.length?`${issues.length} finding${issues.length>1?"s":""} this month ${issues.length>1?"are":"is"} worth acting on, ranked by severity and size.`:"No findings need action this month. The practice is at or above target on every measure reported.",
     `${spot?`<div class="spot"><div class="sl"><span class="eyebrow">Found in this report</span>${spot.s.imp>0?`<div class="big">${usdK(spot.s.imp)}</div><span class="eyebrow">${spot.s.impL}</span>`:""}<h4>${esc(spot.s.title)}</h4><p class="muted">${esc(spot.s.body)}</p></div>
       <div class="sr"><span class="eyebrow">How ${esc(B.name)} solves it</span><div class="hook">${esc(spot.q.hook||spot.q.name)}</div><p><b>${esc(spot.q.name)}.</b> ${esc(spot.q.what)}</p><div class="cta">${cta(spot.q,"See how "+esc(spot.q.name)+" works")}</div></div></div>`:""}
     <div>${rest.map(({s,q})=>`<div class="find"><span><span class="pill ${s.tone}">${s.tag}</span></span><div><h4>${esc(s.title)}</h4>${q?`<div style="margin-top:6px">${solcard(q)}</div>`:""}</div>
