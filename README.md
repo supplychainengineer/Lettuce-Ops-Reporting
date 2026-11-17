@@ -10,6 +10,8 @@ Open `index.html` in any browser. No install, no server. An internet connection 
 
 **Upload past reports**: on the Enter numbers tab, upload earlier monthly report PDFs (several at once). A built-in reader takes the numbers from the report tables; when the tool is opened inside Claude, Claude also reads the page images, which covers tables stored as pictures and other layouts. Every number is shown for checking, with Claude-read values and disagreements highlighted, before it is saved.
 
+**Payment methods**: each practice has its own list of insurance and patient payment methods (for example Finix, Stripe, CareCredit, EFT), edited in the Payment posting section of the Enter numbers tab. Data entry, the report and the spreadsheet template follow that list. When an uploaded report shows a method the practice does not have yet, it is offered as a new method and added on save.
+
 **Past months by hand**: use "Add earlier month" for one month at a time, or "Add past months from a spreadsheet": copy the 12-month template, fill it in Excel or Google Sheets from earlier reports, and paste it back. Once four or more months have numbers, the report gains a page with 12-month trend charts and a month-by-month table.
 
 **Multiple practices under one owner**: give the practices the same "Group or owner" name on the Enter numbers tab. Each of their reports then gains an "Across your practices" page comparing them for that month, with the group total and what matching the best practice could be worth.
