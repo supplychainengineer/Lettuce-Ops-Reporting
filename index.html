@@ -177,7 +177,7 @@ const FIELDS = [
   ["submitted","Claims submitted","n"],["pending","Claims pending","n"],["denialRate","Denial rate %","%"],["resubRate","Re-submit rate %","%"],
   {sec:"Production", src:"Practice reports sheet"},
   ["startsIns","Starts with insurance","n"],["sds","SDS (same-day starts)","n"],["gross","Gross production $","$"],["adj","Production adjustment $","$"],
-  ["payInFull","Pay-in-full cases","n"],["avgDeposit","Avg. initial deposit $","$"],
+  ["payInFull","Pay-in-full cases","n"],["avgDeposit","Initial deposit (mode) $","$"],
   {sec:"Insurance A/R", src:"PMS aging report"},
   ["insFR","Future revenue $","$"],["insCur","Overdue: current cycle $","$"],["ins30","Overdue: 1–30 $","$"],["ins60","Overdue: 31–60 $","$"],["ins90","Overdue: 61–90 $","$"],["ins91","Overdue: 91+ $","$"],
   {sec:"Patient A/R", src:"PMS aging report"},
@@ -501,7 +501,7 @@ function renderReport(){
   /* 4 — production & collections */
   if(d.net!==null||d.hasPost) page("collect","Production & collections · Lettuce Collect","What was produced and what was collected",
     d.net!==null&&d.hasPost?`The practice produced <b>${usd(d.net)}</b> net and posted <b>${usd(d.coll)}</b> in payments. Production is contract value earned this month; collections are cash received against this and earlier contracts.`:"",
-    `<div class="cols c4">${tile("Starts (with insurance)",`${int(m.starts)} (${int(m.startsIns)})`)}${tile("Same-day starts",int(m.sds),n0(m.starts)&&has(m.sds)?pct(m.sds/m.starts*100,0)+" of starts":"")}${tile("Pay-in-full cases",int(m.payInFull),n0(m.starts)&&has(m.payInFull)?pct(m.payInFull/m.starts*100,0)+" of starts":"")}${tile("Avg. initial deposit",usd(m.avgDeposit))}</div>
+    `<div class="cols c4">${tile("Starts (with insurance)",`${int(m.starts)} (${int(m.startsIns)})`)}${tile("Same-day starts",int(m.sds),n0(m.starts)&&has(m.sds)?pct(m.sds/m.starts*100,0)+" of starts":"")}${tile("Pay-in-full cases",int(m.payInFull),n0(m.starts)&&has(m.payInFull)?pct(m.payInFull/m.starts*100,0)+" of starts":"")}${tile("Initial deposit (mode)",usd(m.avgDeposit),"most common amount")}</div>
     <div class="cols">${d.net!==null?`<div class="block"><h3>Gross to net production</h3>${bridge(m,d)}</div>`:""}
       ${d.hasPost?`<div class="block"><h3>Payments posted by channel</h3>
         <span class="eyebrow">Patient · ${usd(d.patColl,2)}</span>${hbars([["Finix","patFinix"],["Elite","patElite"],["Check","patCheck"],["Cash","patCash"]].map(r=>({l:`${r[0]} (${int(n0(m[r[1]+"N"]))})`,v:n0(m[r[1]])})),v=>usd(v,2),C.s1)}
