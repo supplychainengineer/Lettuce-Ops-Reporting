@@ -114,6 +114,7 @@ textarea{width:100%;min-height:80px;font-size:13px}
 .page tr.sec td{font-weight:700;background:var(--tint)}
 .page tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
 .page tr.tot td{font-weight:700}
+.page table.tight td{padding-block:3px}
 .say{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:5px;color:var(--ink2)}
 .say b{color:var(--ink)}
 .hb{display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:8px;align-items:center;font-size:11.5px;padding:1.5px 0}
@@ -283,6 +284,34 @@ const parseNum = s => { const t=String(s).replace(/[$,%\s]/g,""); if(t===""||t==
 const fieldCount = m => FIELDS.filter(f=>Array.isArray(f)&&!f[3]&&has(m[f[0]])).length;
 const NF = FIELDS.filter(f=>Array.isArray(f)&&!f[3]).length;
 
+const mKey = m => (m.year||0)*12 + Math.max(0,MONTHS.indexOf(m.label));
+const sortMonths = pr => pr.months.sort((a,c)=>mKey(a)-mKey(c));
+const norm = t => String(t||"").toLowerCase().replace(/&[a-z]+;/g,"").replace(/[^a-z0-9]+/g,"");
+/* Parse a pasted table: first row = month headers, first column = field labels (as in the template). */
+function importTable(text, pr){
+  const rows=String(text).replace(/\r/g,"").split("\n").filter(r=>r.trim()).map(r=>r.split(r.includes("\t")?"\t":/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(c=>c.replace(/^"|"$/g,"").trim()));
+  if(rows.length<2) return {ok:false,msg:"Paste the whole table, including the row of month names at the top."};
+  const latest=pr.months.length?pr.months[pr.months.length-1]:{label:MONTHS[new Date().getMonth()],year:new Date().getFullYear()};
+  const cols=rows[0].slice(1).map(h=>{ const mi=MONTHS.findIndex(M=>h.toLowerCase().startsWith(M.slice(0,3).toLowerCase())); if(mi<0) return null;
+    const ym=h.match(/(20\d\d)/); let y=ym?+ym[1]:(latest.year||new Date().getFullYear()); if(!ym && y*12+mi>mKey(latest)) y-=1; return {label:MONTHS[mi],year:y}; });
+  if(!cols.some(Boolean)) return {ok:false,msg:"No month names found in the first row. Use headers such as “October 2026”."};
+  const byLabel={}; FIELDS.filter(Array.isArray).forEach(f=>{ byLabel[norm(f[1])]=f[0]; byLabel[norm(f[0])]=f[0]; });
+  let cells=0, unknown=[], months=new Set();
+  rows.slice(1).forEach(r=>{ const k=byLabel[norm(r[0])]; if(!k){ if(r[0]) unknown.push(r[0]); return; }
+    cols.forEach((c,j)=>{ if(!c) return; const v=parseNum(r[j+1]??""); if(v===null) return;
+      let m=pr.months.find(x=>x.label===c.label&&x.year===c.year); if(!m){ m={label:c.label,year:c.year}; pr.months.push(m); }
+      m[k]=v; cells++; months.add(c.label+" "+c.year); }); });
+  sortMonths(pr); pr.scn=null;
+  return {ok:cells>0,msg:cells?`Imported ${cells} values across ${months.size} month${months.size>1?"s":""}.${unknown.length?` Skipped ${unknown.length} row${unknown.length>1?"s":""} with labels not in the template (${unknown.slice(0,3).map(esc).join(", ")}${unknown.length>3?"…":""}).`:""}`:"No numbers were found. Check that the row labels match the template."};
+}
+function templateTSV(pr){
+  const ms=[...pr.months]; let f=ms[0]||{label:MONTHS[new Date().getMonth()],year:new Date().getFullYear()};
+  while(ms.length<12){ const i=MONTHS.indexOf(f.label); f={label:MONTHS[(i+11)%12],year:f.year-(i===0?1:0)}; ms.unshift(f); }
+  return [["Field",...ms.map(m=>m.label+" "+m.year)].join("\t"),...FIELDS.filter(Array.isArray).map(fl=>[fl[1],...ms.map(m=>has(m[fl[0]])?m[fl[0]]:"")].join("\t"))].join("\n");
+}
+window.__importTSV=(t)=>{ const r=importTable(t,P()); save(); return r; };
+window.__template=()=>templateTSV(P());
+
 function derive(m){
   const d = {};
   d.withIns = sum(m,["insSingle","insDual"]);
@@ -399,6 +428,23 @@ function ring(score, tone){
   return `<svg viewBox="0 0 132 132" role="img" aria-label="Revenue Health Index ${score} of 100"><circle cx="66" cy="66" r="${r}" fill="none" stroke="#e9ede8" stroke-width="11"/>
     <circle cx="66" cy="66" r="${r}" fill="none" stroke="${col}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${(c*score/100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 66 66)"/>
     ${tx(66,74,score??"–",{a:"middle",s:36,w:700,f:C.ink})}${tx(66,91,"OF 100",{a:"middle",s:9,f:C.ink3})}</svg>`;
+}
+function lineChart(ms, series, f, o={}){
+  const W=340,H=128,L=46,R=12,T=16,B=20, N=ms.length, all=[];
+  series.forEach(se=>ms.forEach(m=>{ const v=se.get(m); if(has(v)&&Number.isFinite(v)) all.push(v); }));
+  if(all.length<2) return `<svg viewBox="0 0 ${W} ${H}">${tx(W/2,H/2,"Not enough months entered",{a:"middle"})}</svg>`;
+  let lo=o.zero?0:Math.min(...all), hi=Math.max(...all); if(has(o.target)){ lo=Math.min(lo,o.target); hi=Math.max(hi,o.target); }
+  if(!o.zero){ const pad=(hi-lo)*0.15||1; lo-=pad; hi+=pad; } const ticks=o.zero?niceTicks(hi,3):null; if(ticks) hi=ticks[ticks.length-1];
+  const x=i=>L+(W-L-R)*(N>1?i/(N-1):0.5), y=v=>T+(H-T-B)*(1-(v-lo)/((hi-lo)||1)); let g="";
+  (ticks||[lo+(hi-lo)*0.15,(lo+hi)/2,hi-(hi-lo)*0.15]).forEach(t=>{ g+=`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="${C.rule}"/>`+tx(L-6,y(t)+3.5,f(t,true),{a:"end",s:9}); });
+  if(has(o.target)) g+=`<line x1="${L}" x2="${W-R}" y1="${y(o.target)}" y2="${y(o.target)}" stroke="${C.ink3}" stroke-dasharray="3 3"/>`;
+  ms.forEach((m,i)=>{ if(N<=8||i%2===(N-1)%2) g+=tx(x(i),H-6,m.label.slice(0,3),{a:"middle",s:9}); });
+  series.forEach(se=>{ const pts=ms.map((m,i)=>{ const v=se.get(m); return has(v)&&Number.isFinite(v)?[i,v]:null; }).filter(Boolean); if(!pts.length) return;
+    let d="", prevI=-2; pts.forEach(p=>{ d+=(p[0]===prevI+1?"L":"M")+x(p[0]).toFixed(1)+" "+y(p[1]).toFixed(1); prevI=p[0]; });
+    g+=`<path d="${d}" fill="none" stroke="${se.c}" stroke-width="2" stroke-linejoin="round"/>`;
+    pts.forEach((p,j)=>{ const end=j===pts.length-1; g+=`<circle cx="${x(p[0])}" cy="${y(p[1])}" r="${end?3.5:2}" fill="${se.c}" stroke="#fff" stroke-width="1.2" data-tip="${esc(ms[p[0]].label+" "+(ms[p[0]].year||"")+" · "+se.n+"\n"+f(p[1]))}"/>`; });
+    const e=pts[pts.length-1]; if(o.endLabel!==false) g+=tx(x(e[0])-4,y(e[1])-7,f(e[1]),{a:"end",s:9.5,w:700,f:C.ink,h:1}); });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map(z=>z.n).join(", "))} by month">${g}</svg>`;
 }
 function trend(vals, labels, f, target){
   const W=176,H=96,L=10,R=10,T=20,B=18, ok=vals.map((v,i)=>has(v)?[i,+v]:null).filter(Boolean);
@@ -545,6 +591,27 @@ function renderReport(){
         ${BUCKETS.map(k=>{ const v=n0(m["ins"+k[0]])+n0(m["pat"+k[0]]); return `<tr><td>${k[1]}</td><td>${usd(v)}</td><td>${n0(pr.risk[k[0]])}%</td><td>${usd(v*n0(pr.risk[k[0]])/100)}</td></tr>`; }).join("")}
         <tr class="tot"><td>Total</td><td>${usd(d.insOver+d.patOver)}</td><td></td><td>${usd(d.atRisk)}</td></tr></tbody></table>
         <p class="small muted">Loss rates are planning assumptions, not this practice's measured write-off history.</p></div></div>`:""}`);
+
+  /* 12-month view: appears once four or more months have numbers */
+  const hist=pr.months.slice(-12).filter(x=>has(x.exams)||has(x.starts)||has(x.gross));
+  if(hist.length>=4){
+    const H=hist.map(x=>({x,dd:derive(x),hh:health(x)})), sumK=k=>hist.reduce((a,x)=>a+n0(x[k]),0), sumD=fn=>H.reduce((a,r)=>a+n0(fn(r)),0);
+    const best=(k,f)=>{ const c=hist.filter(x=>has(x[k])).sort((a,c)=>c[k]-a[k])[0]; return c?`${esc(c.label)} ${c.year||""} (${f(c[k])})`:"–"; };
+    const nProd=H.filter(r=>r.dd.net!==null).length, nColl=H.filter(r=>r.dd.hasPost).length, nAR=H.filter(r=>r.dd.hasAR).length;
+    const span=`${esc(hist[0].label)} ${hist[0].year||""} to ${esc(hist[hist.length-1].label)} ${hist[hist.length-1].year||""}`;
+    const kS=(v,ax)=>ax?usdK(v):usdK(v), pS=(v,ax)=>ax?Math.round(v)+"%":pct(v), iS=(v,ax)=>ax?String(Math.round(v)):int(Math.round(v));
+    const g2=(a,b)=>`<div class="cols">${a}${b}</div>`, blk=(t,leg,ch)=>`<div class="block"><h3>${t}</h3>${leg?`<div class="legend">${leg}</div>`:""}${ch}</div>`;
+    page("history","Last "+hist.length+" months",`${hist.length} months at a glance`,
+      `From ${span}: <b>${int(sumK("starts"))}</b> treatment starts from <b>${int(sumK("exams"))}</b> exams scheduled${nProd?`, <b>${usd(sumD(r=>r.dd.net))}</b> in net production`:""}${nColl?` and <b>${usd(sumD(r=>r.dd.hasPost?r.dd.coll:null))}</b> collected`:""}. Best month for starts: ${best("starts",int)}. Best conversion: ${best("convRate",pct)}.`,
+      g2(blk("Exams and treatment starts",`<span><i class="ln" style="background:${C.s1}"></i>Exams scheduled</span><span><i class="ln" style="background:${C.s3}"></i>Treatment starts</span>`,lineChart(hist,[{n:"Exams scheduled",c:C.s1,get:x=>x.exams},{n:"Treatment starts",c:C.s3,get:x=>x.starts}],iS,{zero:true})),
+         blk("Kept rate and conversion",`<span><i class="ln" style="background:${C.s1}"></i>Kept exam rate</span><span><i class="ln" style="background:${C.s2}"></i>Conversion</span>`,lineChart(hist,[{n:"Kept exam rate",c:C.s1,get:x=>x.keptRate},{n:"Conversion",c:C.s2,get:x=>x.convRate}],pS,{})))+
+      g2(nProd||nColl?blk("Net production and collections",`<span><i class="ln" style="background:${C.s1}"></i>Net production</span><span><i class="ln" style="background:${C.s3}"></i>Collections</span>`,lineChart(hist,[{n:"Net production",c:C.s1,get:x=>derive(x).net},{n:"Collections",c:C.s3,get:x=>{ const dd=derive(x); return dd.hasPost?dd.coll:null; }}],kS,{zero:true})):"",
+         blk("Revenue Health Index","",lineChart(hist,[{n:"Revenue Health Index",c:C.s1,get:x=>health(x).score}],iS,{target:85})))+
+      `<table class="tight"><thead><tr><th>Month</th><th>Index</th><th>Exams</th><th>Kept</th><th>Starts</th><th>Conv.</th><th>Net production</th><th>Collected</th><th>Overdue A/R</th></tr></thead><tbody>
+        ${H.map(r=>`<tr${r.x===m?' class="sec"':""}><td>${esc(r.x.label.slice(0,3))} ${r.x.year||""}</td><td>${r.hh.score??"–"}</td><td>${int(r.x.exams)}</td><td>${pct(r.x.keptRate)}</td><td>${int(r.x.starts)}</td><td>${pct(r.x.convRate)}</td><td>${r.dd.net!==null?usd(r.dd.net):"–"}</td><td>${r.dd.hasPost?usd(r.dd.coll):"–"}</td><td>${r.dd.hasAR?usd(r.dd.insOver+r.dd.patOver):"–"}</td></tr>`).join("")}
+        <tr class="tot"><td>Total / average</td><td>${H.some(r=>r.hh.score!==null)?Math.round(avg(H.filter(r=>r.hh.score!==null).map(r=>r.hh.score))):"–"}</td><td>${int(sumK("exams"))}</td><td>${pct(avg(hist.filter(x=>has(x.keptRate)).map(x=>+x.keptRate)))}</td><td>${int(sumK("starts"))}</td><td>${pct(avg(hist.filter(x=>has(x.convRate)).map(x=>+x.convRate)))}</td><td>${nProd?usd(sumD(r=>r.dd.net)):"–"}</td><td>${nColl?usd(sumD(r=>r.dd.hasPost?r.dd.coll:null)):"–"}</td><td></td></tr></tbody></table>
+      <p class="small muted">A dash means the figure was not entered; totals cover entered months only. Dashed line on the index chart: 85, the start of “Strong”.</p>`);
+  }
 
   /* group comparison: practices that share a group name, for the same month */
   const grp=(pr.group||"").trim(), peers=grp?DB.practices.filter(x=>(x.group||"").trim().toLowerCase()===grp.toLowerCase()):[];
@@ -717,10 +784,18 @@ function renderData(){
     <div class="fld"><label for="pShort">Short code</label><input id="pShort" class="txt" value="${esc(pr.short)}"></div>
     <div class="fld"><label for="pSource">Data source</label><input id="pSource" class="txt" value="${esc(pr.source)}"></div>
     <div class="fld"><label for="pGroup">Group or owner (optional)</label><input id="pGroup" class="txt" value="${esc(pr.group||"")}" placeholder="e.g. Smith Orthodontics"><span class="h">Same name on several practices adds a comparison page</span></div></div></div>
-  <div class="block"><div class="row" style="justify-content:space-between"><h2>Month</h2><div class="row"><button class="primary" id="addM" type="button">Add next month</button><button id="delM" type="button">Remove ${esc(ms[ms.length-1].label)}</button></div></div>
+  <div class="block"><div class="row" style="justify-content:space-between"><h2>Month</h2><div class="row"><button id="addE" type="button">Add earlier month</button><button class="primary" id="addM" type="button">Add next month</button><button id="delM" type="button">Remove ${esc(ms[ms.length-1].label)}</button></div></div>
     <div class="row">${ms.map((x,i)=>`<button type="button" data-mi="${i}" aria-pressed="${i===mi}">${esc(x.label)} ${x.year||""}</button>`).join("")}</div>
     <div class="row"><span class="small muted" id="pgTxt">${done} of ${NF} fields entered for ${esc(m.label)}</span><div class="prog"><i id="pgBar" style="width:${done/NF*100}%"></i></div><a class="btn" href="#report" style="text-decoration:none">See the report →</a></div>
     <p class="small muted">Enter what you have. Sections with no numbers are left out of the report. The grey line under each box is last month's value. The report is always built for the latest month and compares it with the one before.</p></div>
+  <details class="panel block" id="impBox"${ms.length<4?" open":""}><summary><b>Add past months from a spreadsheet</b> <span class="small muted">· fastest way to load up to 12 months of history</span></summary>
+    <ol class="small muted" style="margin:6px 0;padding-left:18px;display:flex;flex-direction:column;gap:3px">
+      <li>Choose <b>Copy template</b>. It has one row per field and one column per month for the last 12 months, with any numbers already entered.</li>
+      <li>Paste it into Excel or Google Sheets and fill in the past months from earlier reports. Leave blanks where you don't have a number.</li>
+      <li>Select the whole table, including the month row and the field column, copy it, paste it below and choose <b>Import</b>.</li></ol>
+    <div class="row"><button id="tplCopy" type="button">Copy template</button><span class="small muted" id="impMsg"></span></div>
+    <textarea id="impTxt" spellcheck="false" placeholder="Paste the filled-in table here"></textarea>
+    <div class="row"><button class="primary" id="impGo" type="button">Import</button><span class="small muted">Imported numbers replace what is already in those months. Months are put in date order automatically.</span></div></details>
   ${secs}
   <div class="panel block"><h3>Pending claims: action required</h3><span class="small muted">One line per claim. This appears in the report, so use an identifier you are allowed to share.</span><textarea id="pendTxt">${esc(m.pendingText||"")}</textarea></div>`;
 }
@@ -739,6 +814,10 @@ dv.addEventListener("input", e=>{
 dv.addEventListener("click", e=>{
   const t=e.target, pr=P(), ms=pr.months;
   if(t.dataset.mi!==undefined){ mi=+t.dataset.mi; renderData(); }
+  if(t.id==="addE"){ const f=ms[0], i=MONTHS.indexOf(f.label); ms.unshift({label:MONTHS[(i+11)%12], year:(f.year||new Date().getFullYear())-(i===0?1:0)}); pr.scn=null; mi=0; save(); renderData(); }
+  if(t.id==="tplCopy"){ const tsv=templateTSV(pr), ta=$("#impTxt"), msg=$("#impMsg"); const fb=()=>{ ta.value=tsv; ta.select(); msg.textContent="Template is in the box below and selected. Press Ctrl/Cmd+C to copy."; };
+    try{ navigator.clipboard.writeText(tsv).then(()=>msg.textContent="Template copied. Paste it into a spreadsheet.",fb); }catch(err){ fb(); } }
+  if(t.id==="impGo"){ const r=importTable($("#impTxt").value,pr); if(r.ok){ mi=null; save(); renderData(); const box=$("#impBox"); box.open=true; $("#impMsg").textContent=r.msg; } else $("#impMsg").textContent=r.msg; }
   if(t.id==="addM"){ const l=ms[ms.length-1], i=MONTHS.indexOf(l.label); ms.push({label:MONTHS[(i+1)%12], year:(l.year||new Date().getFullYear())+(i===11?1:0)}); pr.scn=null; mi=ms.length-1; save(); renderData(); }
   if(t.id==="delM"&&ms.length>1){ if(t.dataset.arm){ ms.pop(); pr.scn=null; mi=null; save(); renderData(); } else { t.dataset.arm=1; t.textContent="Click again to remove"; } }
 });
@@ -817,7 +896,7 @@ function route(){
   Object.keys(VIEWS).forEach(k=>$("#view-"+k).hidden=k!==v);
   VIEWS[v]();
 }
-function boot(){ if(!DB.practices.find(p=>p.id===DB.cur)) DB.cur=DB.practices[0].id; mi=null; save(); applyBrand(); fillPractices(); route(); }
+function boot(){ if(!DB.practices.find(p=>p.id===DB.cur)) DB.cur=DB.practices[0].id; DB.practices.forEach(sortMonths); mi=null; save(); applyBrand(); fillPractices(); route(); }
 window.addEventListener("hashchange",route);
 boot();
 </script>
