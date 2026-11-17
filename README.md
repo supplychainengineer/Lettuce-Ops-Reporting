@@ -8,7 +8,9 @@ Open `index.html` in any browser. No install, no server. An internet connection 
 2. **Report**: a cover page, then a story: summary with a Revenue Health Index, performance and contracted future revenue, insurance, cash flow, 12-month outlook, then problems and solutions. Type analyst notes at the foot of any page. Download the PDF and copy the email text.
 3. **Branding & products**: company name, colour, logo, footer; the product catalog (what each product does, its best feature, the problems it solves, its link), which the report matches to each practice's findings and features as a spotlight on the last page; per-practice targets and A/R loss-rate assumptions; backup and restore.
 
-**Past months**: on the Enter numbers tab, use "Add earlier month" for one month at a time, or "Add past months from a spreadsheet": copy the 12-month template, fill it in Excel or Google Sheets from earlier reports, and paste it back. Once four or more months have numbers, the report gains a page with 12-month trend charts and a month-by-month table.
+**Upload past reports**: on the Enter numbers tab, upload earlier monthly report PDFs (several at once). A built-in reader takes the numbers from the report tables; when the tool is opened inside Claude, Claude also reads the page images, which covers tables stored as pictures and other layouts. Every number is shown for checking, with Claude-read values and disagreements highlighted, before it is saved.
+
+**Past months by hand**: use "Add earlier month" for one month at a time, or "Add past months from a spreadsheet": copy the 12-month template, fill it in Excel or Google Sheets from earlier reports, and paste it back. Once four or more months have numbers, the report gains a page with 12-month trend charts and a month-by-month table.
 
 **Multiple practices under one owner**: give the practices the same "Group or owner" name on the Enter numbers tab. Each of their reports then gains an "Across your practices" page comparing them for that month, with the group total and what matching the best practice could be worth.
 

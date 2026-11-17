@@ -115,6 +115,12 @@ textarea{width:100%;min-height:80px;font-size:13px}
 .page tr.sub td:first-child{padding-left:20px;color:var(--ink2)}
 .page tr.tot td{font-weight:700}
 .page table.tight td{padding-block:3px}
+.rv input{width:96px}
+.rv tr.sec td{font-weight:700;padding-top:12px;color:var(--brand)}
+.rv td,.rv th{text-align:left}
+.rv input.claude,.key.claude{background:var(--warn-bg)}
+.rv input.conflict,.key.conflict{background:var(--bad-bg);border-color:var(--bad)}
+.key{padding:2px 8px;border-radius:5px;border:1px solid var(--line)}
 .say{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:5px;color:var(--ink2)}
 .say b{color:var(--ink)}
 .hb{display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:8px;align-items:center;font-size:11.5px;padding:1.5px 0}
@@ -770,6 +776,159 @@ async function downloadPdf(){
 }
 window.__makePdf=makePdf;
 
+
+/* ================= read past reports (PDF) =================
+   Two readers: a text reader for tables stored as text, and Claude reading the page images for
+   tables stored as pictures. Nothing is saved until the user checks the numbers and chooses Save. */
+const PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+let pdfReady=null, UP=null;
+const loadScript=src=>new Promise((ok,no)=>{ const el=document.createElement("script"); el.src=src; el.onload=ok; el.onerror=()=>no(new Error("load")); document.head.appendChild(el); });
+function loadPdfJs(){ if(window.pdfjsLib&&window.pdfjsWorker) return Promise.resolve(); return pdfReady||(pdfReady=loadScript(PDFJS+"pdf.min.js").then(()=>loadScript(PDFJS+"pdf.worker.min.js")).catch(e=>{ pdfReady=null; throw e; })); }
+const rowsOf=items=>{ const rows=[]; [...items].sort((a,b)=>b.y-a.y||a.x-b.x).forEach(it=>{ const r=rows.find(r=>Math.abs(r.y-it.y)<3); r?r.items.push(it):rows.push({y:it.y,items:[it]}); }); rows.forEach(r=>r.items.sort((a,b)=>a.x-b.x)); return rows; };
+async function readPdf(file, maxImg){
+  const doc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise, pages=[], images=[]; let text="";
+  for(let i=1;i<=doc.numPages;i++){ const pg=await doc.getPage(i), tc=await pg.getTextContent();
+    const items=tc.items.filter(t=>t.str.trim()).map(t=>({s:t.str,x:t.transform[4],y:t.transform[5],w:t.width||0}));
+    pages.push(items); text+=`\n--- page ${i} ---\n`+rowsOf(items).map(r=>r.items.map(t=>t.s).join(" ")).join("\n");
+    if(i<=maxImg){ const vp=pg.getViewport({scale:1.6}), cv=document.createElement("canvas"); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
+      const cx=cv.getContext("2d"); cx.fillStyle="#ffffff"; cx.fillRect(0,0,cv.width,cv.height); await pg.render({canvasContext:cx,viewport:vp}).promise;
+      images.push(await new Promise(r=>cv.toBlob(r,"image/jpeg",0.85))); } }
+  return {pages,images,text,numPages:doc.numPages};
+}
+const MIDX=s=>{ const t=String(s).trim().toLowerCase(); if(t.length<3) return -1; return MONTHS.findIndex(M=>M.toLowerCase()===t||M.slice(0,3).toLowerCase()===t); };
+const VALRE=/^(?:\$?\s?-?[\d,]*\.?\d+%?|\$?[\d,]+(?:\.\d+)?\s?\(\d+\)|[-–—])$/;
+const numOf=s=>{ const t=String(s).trim(); if(/^[-–—]$/.test(t)) return 0; const v=parseFloat(t.replace(/[$,%\s]/g,"")); return Number.isFinite(v)?v:null; };
+function fieldFor(label, sec){
+  const L=norm(label), S=norm(sec), ins=/insurance/.test(S), pat=/patient/.test(S);
+  if(/^starts.*ins/.test(L)) return "startsPair";
+  const R=[[/^examsscheduled|^examscheduled/,"exams"],[/keptexamrate/,"keptRate"],[/^single/,"insSingle"],[/^dual/,"insDual"],[/priorverification/,"verPrior"],[/^sameday/,"verSame"],[/^postexam/,"verPost"],
+    [/^(tx|treatment)starts$/,"starts"],[/conv/,"convRate"],[/aobsubscriber/,"aobSub"],[/aobpractice/,"aobPrac"],[/^submitted$/,"submitted"],[/^pending$/,"pending"],[/denialrate/,"denialRate"],[/resubmit/,"resubRate"],
+    [/^sds$/,"sds"],[/grossproduction/,"gross"],[/productionadjustment/,"adj"],[/payinfull/,"payInFull"],[/initialdeposit/,"avgDeposit"],[/^finix$/,"patFinix"],[/^elite$/,"patElite"],[/^cash$/,"patCash"]];
+  for(const [re,k] of R) if(re.test(L)) return k;
+  if(ins||pat){ const p=ins?"ins":"pat";
+    if(/futurerevenue|totalfr/.test(L)) return p+"FR"; if(/currentcycle/.test(L)) return p+"Cur";
+    if(/aging13[01]$/.test(L)) return p+"30"; if(/aging3160$/.test(L)) return p+"60"; if(/aging6190$/.test(L)) return p+"90"; if(/aging91/.test(L)) return p+"91";
+    if(/^check$/.test(L)) return ins?"insCheck":"patCheck"; if(/^(vc|virtualcard)$/.test(L)) return "insVC"; }
+  return null;
+}
+/* Text reader: finds tables whose header row names months (or the payment-posting header) and reads each row. */
+function parseReport(pages, text){
+  const tm=text.match(new RegExp("("+MONTHS.join("|")+")\\s+(?:20\\d\\d\\s+)?(?:Monthly\\s+)?Report","i")), dm=text.match(/\b\d{1,2}\/\d{1,2}\/(20\d\d)\b/);
+  const yrs=(text.match(/\b20\d\d\b/g)||[]).map(Number), yr=dm?+dm[1]:yrs.length?Math.max(...yrs):null;
+  let repIdx=tm?MIDX(tm[1]):-1, out={}, count=0, latestHdr=-1;
+  const tables=[];
+  pages.forEach(items=>{ const rows=rowsOf(items);
+    rows.forEach(r=>{ const mc=r.items.filter(t=>t.x>150&&MIDX(t.s)>=0);
+      if(mc.length) tables.push({items,y:r.y,cols:mc.map(t=>({c:t.x+t.w/2,m:MIDX(t.s)}))});
+      else if(/payments\s*posted/i.test(r.items.map(t=>t.s).join(" "))) tables.push({items,y:r.y,pay:true,cols:r.items.filter(t=>t.x>150).map((t,j)=>({c:t.x+t.w/2,role:j?"N":""}))}); }); });
+  tables.forEach(t=>{ if(!t.pay) t.cols.forEach(c=>latestHdr=Math.max(latestHdr,c.m)); });
+  if(repIdx<0) repIdx=latestHdr;
+  const yearOf=mi=>yr===null?null:(repIdx>=0&&mi>repIdx?yr-1:yr);
+  const put=(mi,k,v)=>{ if(v===null||mi<0) return; const key=MONTHS[mi]+"|"+yearOf(mi); (out[key]=out[key]||{})[k]=v; count++; };
+  tables.forEach((t,ti)=>{
+    const ends=t.items.filter(it=>it.y<t.y-2&&/^(References|Note:|Pending Claims)/i.test(it.s.trim())).map(it=>it.y), nextHdr=tables.filter(o=>o.items===t.items&&o.y<t.y-2).map(o=>o.y);
+    const stop=Math.max(t.y-620,...ends,...nextHdr), reg=t.items.filter(it=>it.y<t.y-2&&it.y>stop);
+    const vals=reg.filter(it=>it.x>180&&VALRE.test(it.s.trim())), labs=reg.filter(it=>it.x<180&&!VALRE.test(it.s.trim()));
+    const groups=[]; vals.sort((a,b)=>b.y-a.y).forEach(v=>{ const g=groups.find(g=>Math.abs(g.y-v.y)<4); g?g.items.push(v):groups.push({y:v.y,items:[v]}); });
+    const used=new Set();
+    groups.forEach(g=>{ const ls=labs.filter(l=>Math.abs(l.y-g.y)<=12); ls.forEach(l=>used.add(l)); g.label=rowsOf(ls).map(r=>r.items.map(i=>i.s).join("")).join(" "); });
+    const secs=rowsOf(labs.filter(l=>!used.has(l))).map(r=>({y:r.y,s:r.items.map(i=>i.s).join("")}));
+    groups.forEach(g=>{ const sec=(secs.filter(x=>x.y>g.y).sort((a,b)=>a.y-b.y)[0]||{}).s||"", k=fieldFor(g.label,sec); if(!k) return;
+      g.items.forEach(v=>{ const col=t.cols.reduce((a,c)=>Math.abs(c.c-(v.x+v.w/2))<Math.abs(a.c-(v.x+v.w/2))?c:a);
+        if(t.pay){ put(repIdx,k+(col.role||""),numOf(v.s)); return; }
+        if(k==="startsPair"){ const m2=v.s.match(/([\d,]+)\s*\((\d+)\)/); if(m2){ put(col.m,"starts",+m2[1].replace(/,/g,"")); put(col.m,"startsIns",+m2[2]); } return; }
+        put(col.m,k,numOf(v.s)); }); });
+  });
+  count=Object.values(out).reduce((a,o)=>a+Object.keys(o).length,0);
+  return {repIdx, year:yr, months:out, count};
+}
+async function askClaude(sample, rd, name, maxImg){
+  const keys=FIELDS.filter(Array.isArray).filter(f=>!f[3]).map(f=>`${f[0]}: ${f[1].replace(/ [$%]$/,"")}`).join("\n");
+  const prompt=`The attached images are the pages, in order, of a monthly revenue-cycle report for an orthodontic practice (file "${name}"). The text that could be extracted from the PDF is below; some tables exist only in the images.
+
+Extract every monthly figure the report prints, for every month it covers. Tables often show three months side by side; include all of them. Use only these field keys:
+${keys}
+
+Rules:
+- Numbers only: no $, %, commas or units (81.3% -> 81.3, $22,102.50 -> 22102.5).
+- A dash in a count column means 0.
+- "#Starts(#Ins) 35(14)" means starts 35 and startsIns 14.
+- Insurance A/R and Patient A/R have separate keys (ins... and pat...). Payment counts use the keys ending in N.
+- Leave out any field the report does not print. Never estimate or calculate a figure, and do not use figures from the written summary when a table shows them.
+- Work out the year from dates in the report.
+
+Reply with only JSON in this shape:
+{"reportMonth":"October","reportYear":2026,"months":[{"month":"October","year":2026,"values":{"exams":51,"keptRate":90.1}}]}
+
+Extracted text:
+${rd.text.slice(0,60000)}`;
+  const r=await sample.json(prompt,{images:rd.images.slice(0,maxImg)});
+  const ok=new Set(FIELDS.filter(Array.isArray).map(f=>f[0])), out={}; let count=0;
+  (r&&Array.isArray(r.months)?r.months:[]).forEach(mm=>{ const mi=MIDX(mm&&mm.month), y=parseInt(mm&&mm.year); if(mi<0||!y) return;
+    Object.entries(mm.values||{}).forEach(([k,v])=>{ const n=typeof v==="number"?v:numOf(v); if(!ok.has(k)||n===null||!Number.isFinite(n)) return; ((out[MONTHS[mi]+"|"+y]=out[MONTHS[mi]+"|"+y]||{}))[k]=n; count++; }); });
+  return {months:out,count,repIdx:MIDX(r&&r.reportMonth),year:parseInt(r&&r.reportYear)||null};
+}
+async function handleUpload(files){
+  const msg=$("#upMsg"), say=t=>{ if(msg) msg.textContent=t; };
+  try{ say("Loading the PDF reader…"); await loadPdfJs(); }catch(e){ say("The PDF reader could not load. Check the internet connection and try again."); return; }
+  let sample=null, lim=null; try{ sample=window.claude&&window.claude.use?await window.claude.use("sample"):null; lim=sample?await sample.limits().catch(()=>null):null; }catch(e){ sample=null; }
+  const maxImg=lim&&lim.images?Math.min(12,lim.images.maxCount||8):(sample?0:0), results=[];
+  for(const [i,f] of files.entries()){
+    say(`Reading ${f.name} (${i+1} of ${files.length})…`);
+    try{
+      const rd=await readPdf(f, maxImg), det=parseReport(rd.pages, rd.text); let ai=null, aiNote="";
+      if(sample&&maxImg){ say(`Claude is reading the tables in ${f.name}… this can take up to a minute.`);
+        try{ ai=await askClaude(sample, rd, f.name, maxImg); }catch(e){ aiNote=e&&e.code==="not_granted"?"Claude was not allowed, so tables stored as images were not read.":e&&e.code==="rate_limited"?"Claude is busy; try this file again in a minute.":"Claude could not read this file."; } }
+      else aiNote=sample?"This view cannot send page images to Claude, so tables stored as images were not read.":"Claude is only available when the tool is opened inside Claude, so tables stored as images were not read.";
+      if(det.year===null&&ai&&ai.year){ det.year=ai.year; }
+      results.push({name:f.name,det,ai,aiNote,pages:rd.numPages});
+    }catch(e){ results.push({name:f.name,error:"This file could not be read as a PDF."}); }
+  }
+  UP=buildReview(results); say(""); renderData(); const box=$("#upBox"); if(box) box.scrollIntoView({block:"start"});
+}
+function buildReview(results){
+  const cells={}, months=new Map(), files=[];
+  const order=r=>{ const d=r.det||{}, a=r.ai||{}; const y=d.year||a.year||0, m=d.repIdx>=0?d.repIdx:(a.repIdx>=0?a.repIdx:0); return y*12+m; };
+  results.filter(r=>!r.error).sort((a,b)=>order(a)-order(b)).forEach(r=>{
+    const d=r.det.months, a=r.ai?r.ai.months:{};
+    /* text-read keys may lack a year when the report had none; fill from Claude's year or skip */
+    const fix=k=>{ const [m,y]=k.split("|"); return y==="null"?(r.ai&&r.ai.year?m+"|"+(MONTHS.indexOf(m)>(r.ai.repIdx>=0?r.ai.repIdx:11)?r.ai.year-1:r.ai.year):null):k; };
+    const keys=new Set([...Object.keys(d).map(fix),...Object.keys(a)].filter(Boolean));
+    keys.forEach(k=>{ const [m,y]=k.split("|"); months.set(k,{label:m,year:+y});
+      const dk=Object.keys(d).find(x=>fix(x)===k), dv=dk?d[dk]:{}, av=a[k]||{};
+      new Set([...Object.keys(dv),...Object.keys(av)]).forEach(f=>{ const t=dv[f], c=av[f];
+        cells[k+"|"+f]= t!==undefined ? {v:t,src:c!==undefined&&Math.abs(t-c)>0.005?"conflict":"text",alt:c} : {v:c,src:"claude"}; }); });
+    files.push({name:r.name,line:`${r.det.repIdx>=0?MONTHS[r.det.repIdx]+" "+(r.det.year||r.ai&&r.ai.year||""):"Report"} · ${r.det.count} values read from text${r.ai?`, ${r.ai.count} read by Claude`:""}`,note:r.aiNote});
+  });
+  results.filter(r=>r.error).forEach(r=>files.push({name:r.name,line:r.error,bad:true}));
+  const ms=[...months.values()].sort((a,b)=>mKey(a)-mKey(b)).slice(-12);
+  return {months:ms,cells,files};
+}
+function reviewHTML(){
+  if(!UP) return "";
+  const ms=UP.months, key=(m,f)=>m.label+"|"+m.year+"|"+f, n={text:0,claude:0,conflict:0};
+  Object.values(UP.cells).forEach(c=>n[c.src]++);
+  let body="", cur=null;
+  FIELDS.forEach(f=>{ if(!Array.isArray(f)){ cur=f; return; }
+    if(!ms.some(m=>UP.cells[key(m,f[0])])) return;
+    if(cur){ body+=`<tr class="sec"><td colspan="${ms.length+1}">${cur.sec}</td></tr>`; cur=null; }
+    body+=`<tr><td>${f[1]}</td>${ms.map(m=>{ const c=UP.cells[key(m,f[0])]; return `<td><input id="up-${norm(key(m,f[0]))}" data-up="${esc(key(m,f[0]))}" class="${c?c.src:""}" inputmode="decimal" value="${c&&has(c.v)?c.v:""}" placeholder="–"${c&&c.src==="conflict"?` title="Text reader: ${c.v} · Claude: ${c.alt}"`:""}></td>`; }).join("")}</tr>`; });
+  return `<div class="block" id="upReview">
+    <div class="small">${UP.files.map(f=>`<div><b>${esc(f.name)}</b> <span class="${f.bad?"":"muted"}">· ${esc(f.line)}</span>${f.note?`<div class="muted">${esc(f.note)}</div>`:""}</div>`).join("")}</div>
+    ${ms.length?`<div class="row small"><b>Check the numbers before saving.</b><span class="key text">Read from report text: ${n.text}</span><span class="key claude">Read by Claude from the page image, check these: ${n.claude}</span>${n.conflict?`<span class="key conflict">The two readers disagree, hover to compare: ${n.conflict}</span>`:""}</div>
+    <div class="scroll"><table class="grid rv"><thead><tr><th>Field</th>${ms.map(m=>`<th>${esc(m.label.slice(0,3))} ${m.year}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="upOver"> Replace numbers already entered</label><button class="primary" id="upSave" type="button">Save ${ms.length} month${ms.length>1?"s":""} to ${esc(P().name)}</button><button id="upDrop" type="button">Discard</button></div>`
+    :`<p class="muted">No monthly figures were found in ${UP.files.length>1?"these files":"this file"}.</p><div><button id="upDrop" type="button">Close</button></div>`}
+  </div>`;
+}
+function saveUpload(){
+  const pr=P(), over=$("#upOver")&&$("#upOver").checked; let n=0;
+  UP.months.forEach(mm=>{ let m=pr.months.find(x=>x.label===mm.label&&x.year===mm.year); if(!m){ m={label:mm.label,year:mm.year}; pr.months.push(m); }
+    FIELDS.filter(Array.isArray).forEach(f=>{ const c=UP.cells[mm.label+"|"+mm.year+"|"+f[0]]; if(!c||!has(c.v)) return; if(over||!has(m[f[0]])){ m[f[0]]=c.v; n++; } }); });
+  sortMonths(pr); pr.scn=null; mi=null; const k=UP.months.length; UP=null; save(); renderData();
+  const msg=$("#upMsg"); if(msg) msg.textContent=`Saved ${n} numbers across ${k} month${k>1?"s":""}.`;
+}
+
 /* ================= data entry ================= */
 function renderData(){
   const el=$("#view-data"), pr=P(), ms=pr.months; if(mi===null||mi>=ms.length) mi=ms.length-1;
@@ -788,7 +947,10 @@ function renderData(){
     <div class="row">${ms.map((x,i)=>`<button type="button" data-mi="${i}" aria-pressed="${i===mi}">${esc(x.label)} ${x.year||""}</button>`).join("")}</div>
     <div class="row"><span class="small muted" id="pgTxt">${done} of ${NF} fields entered for ${esc(m.label)}</span><div class="prog"><i id="pgBar" style="width:${done/NF*100}%"></i></div><a class="btn" href="#report" style="text-decoration:none">See the report →</a></div>
     <p class="small muted">Enter what you have. Sections with no numbers are left out of the report. The grey line under each box is last month's value. The report is always built for the latest month and compares it with the one before.</p></div>
-  <details class="panel block" id="impBox"${ms.length<4?" open":""}><summary><b>Add past months from a spreadsheet</b> <span class="small muted">· fastest way to load up to 12 months of history</span></summary>
+  <div class="panel block" id="upBox"><div><h3>Upload past reports</h3><span class="small muted">Upload the monthly report PDFs already sent to this practice, up to 12 months. The tool reads the numbers out of them and shows them here to check before anything is saved.</span></div>
+    <div class="row"><input type="file" id="upFile" accept="application/pdf,.pdf" multiple aria-label="Report PDFs"><span class="small muted" id="upMsg"></span></div>
+    ${reviewHTML()}</div>
+  <details class="panel block" id="impBox"><summary><b>Or paste past months from a spreadsheet</b> <span class="small muted">· for figures that are not in a report PDF</span></summary>
     <ol class="small muted" style="margin:6px 0;padding-left:18px;display:flex;flex-direction:column;gap:3px">
       <li>Choose <b>Copy template</b>. It has one row per field and one column per month for the last 12 months, with any numbers already entered.</li>
       <li>Paste it into Excel or Google Sheets and fill in the past months from earlier reports. Leave blanks where you don't have a number.</li>
@@ -800,8 +962,10 @@ function renderData(){
   <div class="panel block"><h3>Pending claims: action required</h3><span class="small muted">One line per claim. This appears in the report, so use an identifier you are allowed to share.</span><textarea id="pendTxt">${esc(m.pendingText||"")}</textarea></div>`;
 }
 const dv=$("#view-data");
+dv.addEventListener("change", e=>{ if(e.target.id==="upFile"&&e.target.files.length) handleUpload([...e.target.files]); });
 dv.addEventListener("input", e=>{
   const t=e.target, pr=P(), m=pr.months[mi];
+  if(t.dataset.up){ const c=UP&&UP.cells[t.dataset.up]; const v=parseNum(t.value); if(c){ c.v=v; } else if(UP&&v!==null){ UP.cells[t.dataset.up]={v,src:"text"}; } return; }
   if(t.dataset.f){ m[t.dataset.f]=parseNum(t.value); pr.scn=null; const dn=fieldCount(m); $("#pgTxt").textContent=`${dn} of ${NF} fields entered for ${m.label}`; $("#pgBar").style.width=dn/NF*100+"%"; }
   else if(t.id==="pName"){ pr.name=t.value; fillPractices(); }
   else if(t.id==="pShort") pr.short=t.value;
@@ -814,6 +978,8 @@ dv.addEventListener("input", e=>{
 dv.addEventListener("click", e=>{
   const t=e.target, pr=P(), ms=pr.months;
   if(t.dataset.mi!==undefined){ mi=+t.dataset.mi; renderData(); }
+  if(t.id==="upSave") saveUpload();
+  if(t.id==="upDrop"){ UP=null; renderData(); }
   if(t.id==="addE"){ const f=ms[0], i=MONTHS.indexOf(f.label); ms.unshift({label:MONTHS[(i+11)%12], year:(f.year||new Date().getFullYear())-(i===0?1:0)}); pr.scn=null; mi=0; save(); renderData(); }
   if(t.id==="tplCopy"){ const tsv=templateTSV(pr), ta=$("#impTxt"), msg=$("#impMsg"); const fb=()=>{ ta.value=tsv; ta.select(); msg.textContent="Template is in the box below and selected. Press Ctrl/Cmd+C to copy."; };
     try{ navigator.clipboard.writeText(tsv).then(()=>msg.textContent="Template copied. Paste it into a spreadsheet.",fb); }catch(err){ fb(); } }
