@@ -430,7 +430,7 @@ const hbars=(items,f,col)=>{ const mx=Math.max(1,...items.map(i=>i.v)); return i
 function renderReport(){
   const el=$("#view-report"), pr=P(), ms=pr.months.slice(-3), m=last(), p=prev(), d=derive(m), pd=p?derive(p):null, b=baseline(), h=health(), B=DB.brand;
   if(!m.notes) m.notes={};
-  if(b && !pr.scn) pr.scn=defaultScn(b);
+  if(b) pr.scn=defaultScn(b);
   const sig=signals().sort((a,c)=>sevRank[a.tone]-sevRank[c.tone]||c.imp-a.imp), issues=sig.filter(s=>s.tone==="bad"||s.tone==="warn");
   const proj=b?project(b,pr.scn,12):null, rec=d.atRisk*n0(pr.scn?.cut)/100, opp=proj?proj.delta+rec:0;
   const rid=`${(pr.short||"RPT").toUpperCase()}-${m.year||""}-${String(MONTHS.indexOf(m.label)+1).padStart(2,"0")}`;
@@ -522,16 +522,12 @@ function renderReport(){
   if(b) page("outlook","4 · Outlook","What this could mean over the next year",
     `At the current pace the practice would produce about <b>${usdK(b.annual)}</b> in net production a year. The scenario holds exam volume steady and lifts kept rate and conversion to their best recent levels.`,
     `<div class="cols c4">${tile("One point of kept rate","≈ "+usdK(b.ptKept),"net production per year")}${tile("One point of conversion","≈ "+usdK(b.ptConv),"net production per year")}${tile("One more exam a month","≈ "+usdK(b.perExam*12),"net production per year")}${tile("Revenue already contracted",d.hasAR?usdK(n0(m.insFR)+n0(m.patFR)):"–","not yet due")}</div>
-    <div class="levers screen">
-      ${[["exams","Exams / month",Math.round(b.exams*0.6),Math.round(b.exams*1.5),1],["kept","Kept rate",70,100,0.1],["conv","Conversion",40,100,0.1],["cut","Aged A/R recovered",0,100,5]].map(l=>`<div class="lever"><label for="lv-${l[0]}">${l[1]}<output>${l[0]==="exams"?int(pr.scn[l[0]]):pct(pr.scn[l[0]],l[0]==="cut"?0:1)}</output></label><input type="range" id="lv-${l[0]}" data-k="${l[0]}" min="${l[2]}" max="${l[3]}" step="${l[4]}" value="${pr.scn[l[0]]}"></div>`).join("")}
-    </div>
     <div class="cols w"><div class="block"><h3>Cumulative net production</h3><div class="legend"><span><i class="ln" style="background:${C.s1}"></i>Current pace</span><span><i class="ln" style="background:${C.s2}"></i>Scenario</span></div>${cum(proj)}</div>
       <div class="block"><h3>Scenario against current pace</h3><table><thead><tr><th>Driver</th><th>Now</th><th>Scenario</th></tr></thead><tbody>
         <tr><td>Exams per month</td><td>${b.exams.toFixed(1)}</td><td>${int(pr.scn.exams)}</td></tr><tr><td>Kept exam rate</td><td>${pct(b.kept)}</td><td>${pct(pr.scn.kept)}</td></tr>
         <tr><td>Conversion</td><td>${pct(b.conv)}</td><td>${pct(pr.scn.conv)}</td></tr><tr><td>Starts per month</td><td>${b.starts.toFixed(1)}</td><td>${proj.sStarts.toFixed(1)}</td></tr>
         <tr><td>Net production, 12 mo</td><td>${usdK(proj.base)}</td><td>${usdK(proj.scn)}</td></tr><tr><td>Overdue A/R recovered</td><td>–</td><td>${usdK(rec)}</td></tr>
-        <tr class="tot"><td>Difference over 12 months</td><td></td><td>${opp>=0?"+":""}${usdK(opp)}</td></tr></tbody></table>
-        <button class="screen" id="scnReset" type="button" style="align-self:flex-start">Reset to best recent month</button></div></div>
+        <tr class="tot"><td>Difference over 12 months</td><td></td><td>${opp>=0?"+":""}${usdK(opp)}</td></tr></tbody></table></div></div>
     <div class="card t"><span class="eyebrow">Method</span><p class="muted">Baseline is the ${b.n}-month average (${esc(b.from)}${b.n>1?" to "+esc(b.to):""}): ${b.exams.toFixed(1)} exams, ${pct(b.kept)} kept, ${pct(b.conv)} conversion, ${b.starts.toFixed(1)} starts, and ${usd(b.value)} net production per start (${esc(b.valueMonth)}). Starts are assumed to scale with exams, kept rate and conversion; in practice some starts come from exams in earlier months. Scenario changes phase in over ${RAMP} months. Production is contract value; cash arrives over each patient's payment plan. This is a planning model, not a forecast of record.</p></div>`);
 
   /* 7 — next steps */
