@@ -304,8 +304,8 @@ function project(b, sc, months){
 const defaultScn = b => ({exams:Math.round(b.exams), kept:+b.bestKept.toFixed(1), conv:+b.bestConv.toFixed(1), cut:50});
 
 /* Revenue Health Index: each component scores 0–100 between a floor and the practice target; the index is the plain average. */
-function health(){
-  const m = last(), d = derive(m), t = P().targets, out = [];
+function health(mm){
+  const m = mm||last(), d = derive(m), t = P().targets, out = [];
   const add = (k,val) => { if(!has(val)) return; const [name,,,floor] = TARGETS[k], tg = n0(t[k]);
     out.push({k,name,val,target:tg,lower:floor>tg,score:clamp((val-floor)/((tg-floor)||1),0,1)*100}); };
   add("kept",m.keptRate); add("conv",m.convRate); add("prior",d.priorShare); add("denial",m.denialRate);
@@ -455,7 +455,7 @@ function renderReport(){
       <div class="card"><span class="eyebrow">Revenue Health Index</span>
         <div class="idx">${ring(h.score??0,h.band[1])}<div style="flex:1;min-width:0"><span class="pill ${h.band[1]}">${h.band[0]}</span>
           ${h.comps.map(c=>`<div class="meter" style="grid-template-columns:118px 42px minmax(0,1fr)"><span>${c.name}</span><span class="v">${pct(c.val,0)}</span><div class="track"><i style="width:${Math.max(3,c.score)}%;background:${c.score>=85?C.good:c.score>=50?C.warn:C.bad}"></i></div></div>`).join("")}</div></div>
-        <p class="small muted">Bars show progress toward this practice's targets (${h.comps.map(c=>`${c.lower?"≤":"≥"}${c.target}%`).join(", ")}).</p></div>
+        <p class="small muted">@@RANK@@Bars show progress toward this practice's targets (${h.comps.map(c=>`${c.lower?"≤":"≥"}${c.target}%`).join(", ")}).</p></div>
       <div class="card t"><span class="eyebrow">Potential 12-month upside</span><div class="tile" style="border:0;padding:0"><span class="v" style="font-size:38px;color:var(--brand)">${opp?usdK(opp):"–"}</span></div>
         <p class="muted">${proj?`About ${usdK(proj.delta)} in net production if kept rate (${pct(pr.scn.kept)}) and conversion (${pct(pr.scn.conv)}) held at their best recent levels${rec>0?`, plus about ${usdK(rec)} from overdue A/R`:""}. An estimate, not a forecast.`:"Add production data to size the opportunity."}</p>
         ${b?`<p class="small muted">Current run rate: ${usdK(b.annual)} net production a year.</p>`:""}</div>
@@ -467,7 +467,7 @@ function renderReport(){
   /* 2 — performance and future revenue */
   const labs=pr.months.slice(-6).map(x=>x.label), tr=(k,t)=>trend(pr.months.slice(-6).map(x=>x[k]),labs,k.endsWith("Rate")?v=>pct(v):int,t);
   const noShow=d.kept!==null?Math.round(m.exams-d.kept):null, fr=n0(m.insFR)+n0(m.patFR), sp=has(m.startsPrior)?Math.min(n0(m.startsPrior),n0(m.starts)):null;
-  page("perf","1 · Performance",`How ${esc(m.label)} performed`,
+  page("perf","Performance",`How ${esc(m.label)} performed`,
     `<b>${int(m.exams)}</b> exams scheduled, <b>${int(m.starts)}</b> treatment starts${d.net!==null?` and <b>${usd(d.net)}</b> in net production`:""}${d.hasAR?`, with <b>${usdK(fr)}</b> of contracted revenue still to come`:""}.`,
     `<div class="cols w"><div class="block"><h3>From exam to start</h3><div class="funnel">
         <div class="fn"><span class="l">Exams scheduled</span><div class="bar" style="width:100%;background:${C.s1}">${int(m.exams)}</div></div>
@@ -486,7 +486,7 @@ function renderReport(){
 
   /* 3 — insurance */
   const insB=BUCKETS.map(k=>({l:k[1],v:n0(m["ins"+k[0]])}));
-  if(d.verified||d.aob||d.pipeline) page("ins","2 · Insurance","Verification, benefits and claims",
+  if(d.verified||d.aob||d.pipeline) page("ins","Insurance","Verification, benefits and claims",
     [d.priorShare!==null?`<b>${pct(d.priorShare,0)}</b> of verifications were completed before the visit`:"", d.aob?`<b>${pct(n0(m.aobPrac)/d.aob*100,0)}</b> of benefit is assigned to the practice`:"", has(m.denialRate)?`the denial rate was <b>${pct(m.denialRate)}</b>`:""].filter(Boolean).join(", ").replace(/^./,c=>c.toUpperCase())+".",
     `<div class="cols"><div class="block"><h3>When coverage was verified</h3><div class="legend"><span><i style="background:${C.s1}"></i>Before the visit</span><span><i style="background:${C.s2}"></i>Same day</span><span><i style="background:${C.s3}"></i>Post-exam</span></div>
         ${stack(ms,[{k:"verPrior",n:"Before the visit",c:C.s1},{k:"verSame",n:"Same day",c:C.s2},{k:"verPost",n:"Post-exam",c:C.s3}],int,150,true)}</div>
@@ -502,7 +502,7 @@ function renderReport(){
     ${m.pendingText?`<div class="card"><h3>Pending claims: action required</h3>${m.pendingText.split("\n").filter(Boolean).map(l=>`<p>${esc(l)}</p>`).join("")}</div>`:""}`);
 
   /* 4 — cash flow */
-  if(d.hasPost||d.hasAR) page("cash","3 · Cash flow","What was collected and what is still owed",
+  if(d.hasPost||d.hasAR) page("cash","Cash flow","What was collected and what is still owed",
     `${d.hasPost?`<b>${usd(d.coll)}</b> was collected this month. `:""}${d.hasAR?`<b>${usd(d.insOver+d.patOver)}</b> is overdue; at the assumed loss rates about <b>${usd(d.atRisk)}</b> of that may not be collected.`:""}`,
     `${d.hasPost?`<div class="cols c4">${tile("Collections posted",usd(d.coll))}${tile("From patients",usd(d.patColl),pct(d.patColl/d.coll*100,0)+" of collections")}${tile("From insurance",usd(d.insColl),pct(d.insColl/d.coll*100,0)+" of collections")}${tile("Collected vs produced",d.net?pct(d.coll/d.net*100,0):"–","of this month's net production")}</div>`:""}
     <div class="cols">${d.hasPost?`<div class="block"><h3>Payments posted by channel</h3>
@@ -518,8 +518,36 @@ function renderReport(){
         <tr class="tot"><td>Total</td><td>${usd(d.insOver+d.patOver)}</td><td></td><td>${usd(d.atRisk)}</td></tr></tbody></table>
         <p class="small muted">Loss rates are planning assumptions, not this practice's measured write-off history.</p></div></div>`:""}`);
 
+  /* group comparison: practices that share a group name, for the same month */
+  const grp=(pr.group||"").trim(), peers=grp?DB.practices.filter(x=>(x.group||"").trim().toLowerCase()===grp.toLowerCase()):[];
+  let rankLine="";
+  if(peers.length>1){
+    const curId=DB.cur, all=peers.map(x=>{ const mm=x.months.find(y=>y.label===m.label&&(y.year||0)===(m.year||0)); if(!mm) return {x,miss:true}; DB.cur=x.id; const r={x,mm,dd:derive(mm),hh:health(mm),me:x.id===curId}; return r; }); DB.cur=curId;
+    const have=all.filter(r=>!r.miss), miss=all.filter(r=>r.miss);
+    if(have.length>1){
+      const rank=[...have].filter(r=>r.hh.score!==null).sort((a,c)=>c.hh.score-a.hh.score), myRank=rank.findIndex(r=>r.me)+1, lead1=rank[0];
+      rankLine=myRank?`Ranks ${myRank} of ${rank.length} in ${esc(grp)}.`:"";
+      const cbar=(title,get,f)=>{ const it=have.filter(r=>has(get(r))&&Number.isFinite(get(r))).sort((a,c)=>get(c)-get(a)), mx=Math.max(1,...it.map(get));
+        return it.length?`<div class="block"><h3>${title}</h3>${it.map(r=>`<div class="hb"><span${r.me?' style="font-weight:700"':""}>${esc(r.x.name)}</span><div class="track"><i style="width:${Math.max(0.5,get(r)/mx*100)}%;background:${r.me?C.s1:"#b9c2ba"}"></i></div><span class="v">${f(get(r))}</span></div>`).join("")}</div>`:""; };
+      const tot=k=>have.reduce((a,r)=>a+n0(r.mm[k]),0), av=k=>{ const v=have.filter(r=>has(r.mm[k])).map(r=>+r.mm[k]); return v.length?avg(v):null; };
+      const totD=k=>have.reduce((a,r)=>a+n0(r.dd[k]),0), ovr=r=>r.dd.hasAR?r.dd.insOver+r.dd.patOver:null;
+      const bestOf=k=>[...have].filter(r=>has(r.mm[k])).sort((a,c)=>c.mm[k]-a.mm[k])[0], gaps=[];
+      if(b) [["keptRate","kept exam rate",b.ptKept],["convRate","conversion",b.ptConv]].forEach(g=>{ const bo=bestOf(g[0]); if(bo&&!bo.me&&has(m[g[0]])&&bo.mm[g[0]]-m[g[0]]>0.5) gaps.push(`Matching ${esc(bo.x.name)}'s ${g[1]} (${pct(bo.mm[g[0]])} against ${pct(m[g[0]])}) could be worth about <b>${usdK((bo.mm[g[0]]-m[g[0]])*g[2])}</b> a year at ${esc(pr.name)}.`); });
+      page("group","Across your practices",`${esc(grp)}: ${have.length} practices side by side`,
+        lead1?(lead1.me?`<b>${esc(pr.name)}</b> has the highest Revenue Health Index in the group this month, at <b>${lead1.hh.score}</b>.`:`<b>${esc(lead1.x.name)}</b> has the highest Revenue Health Index this month at <b>${lead1.hh.score}</b>. ${esc(pr.name)} is at <b>${h.score??"–"}</b>, ${myRank} of ${rank.length}.`):"",
+        `<table><thead><tr><th>${esc(m.label)} ${m.year||""}</th><th>Index</th><th>Exams</th><th>Kept</th><th>Starts</th><th>Conv.</th><th>Net production</th><th>Collected</th><th>Overdue A/R</th></tr></thead><tbody>
+          ${have.map(r=>`<tr class="${r.me?"sec":""}"><td>${esc(r.x.name)}</td><td>${r.hh.score??"–"}</td><td>${int(r.mm.exams)}</td><td>${pct(r.mm.keptRate)}</td><td>${int(r.mm.starts)}</td><td>${pct(r.mm.convRate)}</td><td>${r.dd.net!==null?usd(r.dd.net):"–"}</td><td>${r.dd.hasPost?usd(r.dd.coll):"–"}</td><td>${ovr(r)!==null?usd(ovr(r)):"–"}</td></tr>`).join("")}
+          <tr class="tot"><td>Group total / average</td><td>${rank.length?Math.round(avg(rank.map(r=>r.hh.score))):"–"}</td><td>${int(tot("exams"))}</td><td>${pct(av("keptRate"))}</td><td>${int(tot("starts"))}</td><td>${pct(av("convRate"))}</td><td>${usd(have.reduce((a,r)=>a+n0(r.dd.net),0))}</td><td>${usd(totD("coll"))}</td><td>${usd(have.reduce((a,r)=>a+n0(ovr(r)),0))}</td></tr></tbody></table>
+        <div class="cols">${cbar("Revenue Health Index",r=>r.hh.score,v=>String(v))}${cbar("Starts conversion",r=>has(r.mm.convRate)?+r.mm.convRate:null,v=>pct(v))}</div>
+        <div class="cols">${cbar("Kept exam rate",r=>has(r.mm.keptRate)?+r.mm.keptRate:null,v=>pct(v))}${cbar("Net production per start",r=>r.dd.net!==null&&n0(r.mm.starts)?r.dd.net/r.mm.starts:null,v=>usd(v))}</div>
+        <div class="cols">${cbar("Verified before the visit",r=>r.dd.priorShare,v=>pct(v,0))}${cbar("Share of A/R overdue · lower is better",r=>r.dd.hasAR&&(r.dd.insAR+r.dd.patAR)>0?(r.dd.insOver+r.dd.patOver)/(r.dd.insAR+r.dd.patAR)*100:null,v=>pct(v))}</div>
+        ${gaps.length?`<div class="card t"><span class="eyebrow">What the best practice in the group shows is possible</span>${gaps.map(g=>`<p class="muted">${g}</p>`).join("")}</div>`:""}
+        <p class="small muted">The highlighted row and blue bars are ${esc(pr.name)}. Each index uses that practice's own targets.${miss.length?` Not shown: ${miss.map(r=>esc(r.x.name)).join(", ")} (no numbers entered for ${esc(m.label)}).`:""}</p>`);
+    }
+  }
+
   /* 6 — outlook */
-  if(b) page("outlook","4 · Outlook","What this could mean over the next year",
+  if(b) page("outlook","Outlook","What this could mean over the next year",
     `At the current pace the practice would produce about <b>${usdK(b.annual)}</b> in net production a year. The scenario holds exam volume steady and lifts kept rate and conversion to their best recent levels.`,
     `<div class="cols c4">${tile("One point of kept rate","≈ "+usdK(b.ptKept),"net production per year")}${tile("One point of conversion","≈ "+usdK(b.ptConv),"net production per year")}${tile("One more exam a month","≈ "+usdK(b.perExam*12),"net production per year")}${tile("Revenue already contracted",d.hasAR?usdK(n0(m.insFR)+n0(m.patFR)):"–","not yet due")}</div>
     <div class="cols w"><div class="block"><h3>Cumulative net production</h3><div class="legend"><span><i class="ln" style="background:${C.s1}"></i>Current pace</span><span><i class="ln" style="background:${C.s2}"></i>Scenario</span></div>${cum(proj)}</div>
@@ -532,7 +560,7 @@ function renderReport(){
 
   /* 7 — next steps */
   const withP=issues.map(s=>({s,q:productFor(s.key)})), spot=withP.find(x=>x.q&&x.q.ready), rest=withP.filter(x=>x!==spot), always=DB.products.filter(x=>x.always&&x.name);
-  page("next","5 · Problems and solutions","Where to act first",
+  page("next","Problems and solutions","Where to act first",
     issues.length?`${issues.length} finding${issues.length>1?"s":""} this month ${issues.length>1?"are":"is"} worth acting on, ranked by severity and size.`:"No findings need action this month. The practice is at or above target on every measure reported.",
     `${spot?`<div class="spot"><div class="sl"><span class="eyebrow">Found in this report</span>${spot.s.imp>0?`<div class="big">${usdK(spot.s.imp)}</div><span class="eyebrow">${spot.s.impL}</span>`:""}<h4>${esc(spot.s.title)}</h4><p class="muted">${esc(spot.s.body)}</p></div>
       <div class="sr"><span class="eyebrow">How ${esc(B.name)} solves it</span><div class="hook">${esc(spot.q.hook||spot.q.name)}</div><p><b>${esc(spot.q.name)}.</b> ${esc(spot.q.what)}</p><div class="cta">${cta(spot.q,"See how "+esc(spot.q.name)+" works")}</div></div></div>`:""}
@@ -549,9 +577,9 @@ function renderReport(){
   </div>
   <div class="docwrap"><div id="doc" style="--brand:${esc(B.color)}">${pages.map((pg,i)=>`<article class="page" data-page="${pg.key}">
     <div class="phead"><div class="b">${B.logo?`<img src="${B.logo}" alt="${esc(B.name)}">`:`<span>${esc(B.name)}</span>`}</div><div class="r">${esc(B.tagline)} report<br>${esc(pr.name)} · ${esc(m.label)} ${m.year||""}</div></div>
-    <div class="ptitle"><span class="eyebrow">${pg.eyebrow}</span><h2>${pg.title}</h2></div>
+    <div class="ptitle"><span class="eyebrow">${i?i+" · ":""}${pg.eyebrow}</span><h2>${pg.title}</h2></div>
     ${pg.lead?`<p class="lead">${pg.lead}</p>`:""}
-    ${pg.body}
+    ${pg.body.replace("@@RANK@@",rankLine?`<b>${rankLine}</b> `:"")}
     <div class="noteh ${m.notes[pg.key]?"":"e"}">Analyst notes</div><div class="notes ${m.notes[pg.key]?"":"e"}" contenteditable="plaintext-only" data-note="${pg.key}" role="textbox" aria-label="Analyst notes">${esc(m.notes[pg.key]||"")}</div>
     <div class="pfoot"><span>${esc(B.footer)}</span><span>${rid} · ${gen} · ${i+1}/${pages.length}</span></div>
   </article>`).join("")}</div></div>`;
@@ -637,7 +665,8 @@ function renderData(){
   <div class="panel block"><h2>Practice</h2><div class="fgrid">
     <div class="fld"><label for="pName">Practice name</label><input id="pName" class="txt" value="${esc(pr.name)}"></div>
     <div class="fld"><label for="pShort">Short code</label><input id="pShort" class="txt" value="${esc(pr.short)}"></div>
-    <div class="fld"><label for="pSource">Data source</label><input id="pSource" class="txt" value="${esc(pr.source)}"></div></div></div>
+    <div class="fld"><label for="pSource">Data source</label><input id="pSource" class="txt" value="${esc(pr.source)}"></div>
+    <div class="fld"><label for="pGroup">Group or owner (optional)</label><input id="pGroup" class="txt" value="${esc(pr.group||"")}" placeholder="e.g. Smith Orthodontics"><span class="h">Same name on several practices adds a comparison page</span></div></div></div>
   <div class="block"><div class="row" style="justify-content:space-between"><h2>Month</h2><div class="row"><button class="primary" id="addM" type="button">Add next month</button><button id="delM" type="button">Remove ${esc(ms[ms.length-1].label)}</button></div></div>
     <div class="row">${ms.map((x,i)=>`<button type="button" data-mi="${i}" aria-pressed="${i===mi}">${esc(x.label)} ${x.year||""}</button>`).join("")}</div>
     <div class="row"><span class="small muted" id="pgTxt">${done} of ${NF} fields entered for ${esc(m.label)}</span><div class="prog"><i id="pgBar" style="width:${done/NF*100}%"></i></div><a class="btn" href="#report" style="text-decoration:none">See the report →</a></div>
@@ -652,6 +681,7 @@ dv.addEventListener("input", e=>{
   else if(t.id==="pName"){ pr.name=t.value; fillPractices(); }
   else if(t.id==="pShort") pr.short=t.value;
   else if(t.id==="pSource") pr.source=t.value;
+  else if(t.id==="pGroup"){ pr.group=t.value; fillPractices(); }
   else if(t.id==="pendTxt") m.pendingText=t.value;
   else return;
   save();
@@ -721,10 +751,10 @@ sv.addEventListener("click", e=>{
 });
 
 /* ================= chrome ================= */
-function fillPractices(){ $("#selP").innerHTML=DB.practices.map(p=>`<option value="${p.id}"${p.id===DB.cur?" selected":""}>${esc(p.name||"Unnamed practice")}</option>`).join(""); }
+function fillPractices(){ $("#selP").innerHTML=DB.practices.map(p=>`<option value="${p.id}"${p.id===DB.cur?" selected":""}>${esc(p.name||"Unnamed practice")}${p.group?" · "+esc(p.group):""}</option>`).join(""); }
 $("#selP").addEventListener("change", e=>{ DB.cur=e.target.value; mi=null; save(); route(); });
 $("#newP").addEventListener("click", ()=>{ const now=new Date(), id="p"+Date.now();
-  DB.practices.push({id,name:"New practice",short:"NEW",source:"",targets:clone(SAMPLE_PRACTICE.targets),risk:clone(SAMPLE_PRACTICE.risk),scn:null,months:[{label:MONTHS[now.getMonth()],year:now.getFullYear()}]});
+  DB.practices.push({id,name:"New practice",short:"NEW",source:"",group:P().group||"",targets:clone(SAMPLE_PRACTICE.targets),risk:clone(SAMPLE_PRACTICE.risk),scn:null,months:[{label:MONTHS[now.getMonth()],year:now.getFullYear()}]});
   DB.cur=id; mi=null; save(); fillPractices(); location.hash="#data"; route(); });
 const tip=$("#tip");
 document.addEventListener("pointermove", e=>{ const t=e.target.closest&&e.target.closest("[data-tip]"); if(!t){ tip.hidden=true; return; }

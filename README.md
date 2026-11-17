@@ -8,6 +8,8 @@ Open `index.html` in any browser. No install, no server. An internet connection 
 2. **Report**: a six-page story: summary with a Revenue Health Index, performance and contracted future revenue, insurance, cash flow, 12-month outlook, then problems and solutions. Type analyst notes at the foot of any page. Download the PDF and copy the email text.
 3. **Branding & products**: company name, colour, logo, footer; the product catalog (what each product does, its best feature, the problems it solves, its link), which the report matches to each practice's findings and features as a spotlight on the last page; per-practice targets and A/R loss-rate assumptions; backup and restore.
 
+**Multiple practices under one owner**: give the practices the same "Group or owner" name on the Enter numbers tab. Each of their reports then gains an "Across your practices" page comparing them for that month, with the group total and what matching the best practice could be worth.
+
 Data is saved in the browser only. Use the backup text to move it between computers.
 
 The outlook is a planning model: starts scale in proportion to exams, kept rate and conversion from the trailing three-month average. Targets and loss rates are editable starting values, not industry benchmarks.
