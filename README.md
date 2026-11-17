@@ -1,13 +1,15 @@
 # LettuceOps RCM Reporter
 
-A single-file browser tool that turns the monthly RCM numbers into the client report and a long-term outlook.
+A single-file browser tool that turns each practice's monthly RCM numbers into a branded, seven-page Revenue Intelligence report (PDF) for email.
 
-Open `index.html` in any browser. No install, no server.
+Open `index.html` in any browser. No install, no server. An internet connection is needed for the Download PDF button and the fonts; without it, use Print and choose Save as PDF.
 
-- **Data**: type the month's numbers from the PMS, tracker sheet and payment posting sheet. Use "Add next month" each month. Data is saved in the browser; copy the export text to back it up or move it.
-- **Report**: the written summary, the four tables and pre-send checks are generated from the data. Print or save as PDF from here.
-- **Outlook**: what the numbers mean over 12 to 36 months. Shows the value of a point of kept-exam rate or conversion, a scenario builder, month signals, and the overdue A/R likely to be lost.
+1. **Enter numbers**: pick or add a practice, add the month, type the numbers. Last month's value is shown under each box.
+2. **Report**: executive brief with a Revenue Health Index, patient funnel, claims and benefits, production and collections, A/R health, 12-month outlook, and recommended next steps. Type analyst notes at the foot of any page. Download the PDF and copy the email text.
+3. **Branding & products**: company name, colour, logo, footer; the products shown beside each finding with their links; per-practice targets and A/R loss-rate assumptions; backup and restore.
 
-The outlook is a planning model. Starts scale in proportion to exams, kept rate and conversion from the trailing three-month average; production is starts times net production per start. A/R loss rates are editable assumptions.
+Data is saved in the browser only. Use the backup text to move it between computers.
 
-The bundled sample is Asana Ortho, August to October 2026. Patient names are not included; keep them out of this repository.
+The outlook is a planning model: starts scale in proportion to exams, kept rate and conversion from the trailing three-month average. Targets and loss rates are editable starting values, not industry benchmarks.
+
+`sample-report.pdf` is the output for the bundled sample (Asana Ortho, October 2026). Patient names are not included; keep them out of this repository.
