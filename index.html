@@ -320,6 +320,14 @@ function project(b, sc, months){
   for(let i=1;i<=months;i++){ cb += b.starts*b.value; cs += (b.starts+(sStarts-b.starts)*Math.min(1,i/RAMP))*b.value; pts.push({m:i,base:cb,scn:cs}); }
   return {sStarts, pts, base:cb, scn:cs, delta:cs-cb};
 }
+/* The 1% path: exams, kept rate and conversion each improve by 1% of their own value every month, compounding. Rates are capped so they stay plausible. */
+const CAP = {kept:97, conv:90};
+function onePct(b, months=12){
+  const pts=[{m:0,base:0,scn:0}], path=[{i:0,ex:b.exams,k:b.kept,c:b.conv,st:b.starts}]; let cb=0, cs=0;
+  for(let i=1;i<=months;i++){ const g=Math.pow(1.01,i), ex=b.exams*g, k=Math.min(Math.max(b.kept,CAP.kept),b.kept*g), c=Math.min(Math.max(b.conv,CAP.conv),b.conv*g), st=b.starts*(ex/b.exams)*(k/b.kept)*(c/b.conv);
+    cb+=b.starts*b.value; cs+=st*b.value; pts.push({m:i,base:cb,scn:cs}); path.push({i,ex,k,c,st}); }
+  return {pts,path,base:cb,scn:cs,delta:cs-cb,end:path[months],each:b.annual*0.01,once:b.annual*(Math.pow(1.01,3)-1),label:"1% each month"};
+}
 const defaultScn = b => ({exams:Math.round(b.exams), kept:+b.bestKept.toFixed(1), conv:+b.bestConv.toFixed(1), cut:50});
 
 /* Revenue Health Index: each component scores 0–100 between a floor and the practice target; the index is the plain average. */
@@ -440,7 +448,7 @@ function cum(pr){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net production, current pace against scenario">${g}<path d="${area}" fill="${C.gap}"/>
     <path d="${path("base")}" fill="none" stroke="${C.s1}" stroke-width="2"/><path d="${path("scn")}" fill="none" stroke="${C.s2}" stroke-width="2"/>
     <circle cx="${x(N)}" cy="${y(pr.base)}" r="3.5" fill="${C.s1}" stroke="#fff" stroke-width="1.5"/><circle cx="${x(N)}" cy="${y(pr.scn)}" r="3.5" fill="${C.s2}" stroke="#fff" stroke-width="1.5"/>
-    ${lab(yb,"Current pace",pr.base)}${lab(ys,"Scenario",pr.scn)}
+    ${lab(yb,"Current pace",pr.base)}${lab(ys,pr.label||"Scenario",pr.scn)}
     ${pts.filter(p=>p.m).map(p=>`<rect class="hit" x="${x(p.m)-cw/2}" y="${T}" width="${cw}" height="${H-T-B}" data-tip="Month ${p.m}\nScenario ${usd(p.scn)}\nCurrent pace ${usd(p.base)}\nGap ${usd(p.scn-p.base)}"/>`).join("")}</svg>`;
 }
 const hbars=(items,f,col)=>{ const mx=Math.max(1,...items.map(i=>i.v)); return items.map(i=>`<div class="hb"><span>${esc(i.l)}</span><div class="track"><i style="width:${Math.max(0.5,i.v/mx*100)}%;background:${col}"></i></div><span class="v">${f(i.v)}</span></div>`).join(""); };
@@ -451,7 +459,7 @@ function renderReport(){
   if(!m.notes) m.notes={};
   if(b) pr.scn=defaultScn(b);
   const sig=signals().sort((a,c)=>sevRank[a.tone]-sevRank[c.tone]||c.imp-a.imp), issues=sig.filter(s=>s.tone==="bad"||s.tone==="warn");
-  const proj=b?project(b,pr.scn,12):null, rec=d.atRisk*n0(pr.scn?.cut)/100, opp=proj?proj.delta+rec:0;
+  const proj=b?onePct(b,12):null, opp=proj?proj.delta:0;
   const rid=`${(pr.short||"RPT").toUpperCase()}-${m.year||""}-${String(MONTHS.indexOf(m.label)+1).padStart(2,"0")}`;
   const pages=[];
   const page=(key,eyebrow,title,lead,body)=>pages.push({key,eyebrow,title,lead,body});
@@ -469,14 +477,14 @@ function renderReport(){
 
   /* 1 — executive brief */
   page("exec","Summary",`${esc(pr.name)}: ${esc(m.label)} ${m.year||""}`,
-    h.score===null?"":`The practice scores <b>${h.score} of 100</b> on the Revenue Health Index this month.${opp>0?` The numbers point to as much as <b>${usdK(opp)}</b> of potential additional revenue over the next 12 months.`:""}`,
+    h.score===null?"":`The practice scores <b>${h.score} of 100</b> on the Revenue Health Index this month.${opp>0?` Getting just 1% better each month could add about <b>${usdK(opp)}</b> over the next 12 months.`:""}`,
     `<div class="cols w">
       <div class="card"><span class="eyebrow">Revenue Health Index</span>
         <div class="idx">${ring(h.score??0,h.band[1])}<div style="flex:1;min-width:0"><span class="pill ${h.band[1]}">${h.band[0]}</span>
           ${h.comps.map(c=>`<div class="meter" style="grid-template-columns:112px 36px 44px minmax(0,1fr)"><span>${c.name}</span><span class="v">${pct(c.val,0)}</span><span class="t">${c.lower?"≤":"≥"}${c.target}%</span><div class="track"><i style="width:${Math.max(3,c.score)}%;background:${c.score>=85?C.good:c.score>=50?C.warn:C.bad}"></i></div></div>`).join("")}</div></div>
         <p class="small muted">@@RANK@@Each measure is scored 0 to 100 against the target shown beside it. The index is the average. Scoring detail is on the Outlook page.</p></div>
-      <div class="card t"><span class="eyebrow">Potential 12-month upside</span><div class="tile" style="border:0;padding:0"><span class="v" style="font-size:38px;color:var(--brand)">${opp?usdK(opp):"–"}</span></div>
-        <p class="muted">${proj?`About ${usdK(proj.delta)} in net production if kept rate (${pct(pr.scn.kept)}) and conversion (${pct(pr.scn.conv)}) held at their best recent levels${rec>0?`, plus about ${usdK(rec)} from overdue A/R`:""}. An estimate, not a forecast.`:"Add production data to size the opportunity."}</p>
+      <div class="card t"><span class="eyebrow">What 1% better each month could add</span><div class="tile" style="border:0;padding:0"><span class="v" style="font-size:38px;color:var(--brand)">${opp?usdK(opp):"–"}</span></div>
+        <p class="muted">${proj?`In net production over 12 months, if exams scheduled, kept rate and conversion each improved by 1% a month. Small gains compound: starts would move from ${b.starts.toFixed(1)} to about ${proj.end.st.toFixed(1)} a month. An illustration, not a forecast.`:"Add production data to size the opportunity."}</p>
         ${b?`<p class="small muted">Current run rate: ${usdK(b.annual)} net production a year.</p>`:""}</div>
     </div>
     <div class="cols c3">${tile("Exams scheduled",int(m.exams),delta(m.exams,p?.exams))}${tile("Kept exam rate",pct(m.keptRate),delta(m.keptRate,p?.keptRate,"pts"))}${tile("Treatment starts",int(m.starts),delta(m.starts,p?.starts))}
@@ -566,21 +574,20 @@ function renderReport(){
     }
   }
 
-  /* 6 — outlook */
-  if(b) page("outlook","Outlook","What this could mean over the next year",
-    `At the current pace the practice would produce about <b>${usdK(b.annual)}</b> in net production a year. The scenario holds exam volume steady and lifts kept rate and conversion to their best recent levels.`,
-    `<div class="cols c4">${tile("One point of kept rate","≈ "+usdK(b.ptKept),"net production per year")}${tile("One point of conversion","≈ "+usdK(b.ptConv),"net production per year")}${tile("One more exam a month","≈ "+usdK(b.perExam*12),"net production per year")}${tile("Revenue already contracted",d.hasAR?usdK(n0(m.insFR)+n0(m.patFR)):"–","not yet due")}</div>
-    <div class="cols w"><div class="block"><h3>Cumulative net production</h3><div class="legend"><span><i class="ln" style="background:${C.s1}"></i>Current pace</span><span><i class="ln" style="background:${C.s2}"></i>Scenario</span></div>${cum(proj)}</div>
-      <div class="block"><h3>Scenario against current pace</h3><table><thead><tr><th>Driver</th><th>Now</th><th>Scenario</th></tr></thead><tbody>
-        <tr><td>Exams per month</td><td>${b.exams.toFixed(1)}</td><td>${int(pr.scn.exams)}</td></tr><tr><td>Kept exam rate</td><td>${pct(b.kept)}</td><td>${pct(pr.scn.kept)}</td></tr>
-        <tr><td>Conversion</td><td>${pct(b.conv)}</td><td>${pct(pr.scn.conv)}</td></tr><tr><td>Starts per month</td><td>${b.starts.toFixed(1)}</td><td>${proj.sStarts.toFixed(1)}</td></tr>
-        <tr><td>Net production, 12 mo</td><td>${usdK(proj.base)}</td><td>${usdK(proj.scn)}</td></tr><tr><td>Overdue A/R recovered</td><td>–</td><td>${usdK(rec)}</td></tr>
-        <tr class="tot"><td>Difference over 12 months</td><td></td><td>${opp>=0?"+":""}${usdK(opp)}</td></tr></tbody></table></div></div>
+  /* 6 — outlook: the 1% path */
+  if(b){ const e=proj.end, q=[0,3,6,9,12].map(i=>proj.path[i]);
+  page("outlook","Outlook","What getting 1% better each month could be worth",
+    `Small gains compound. If exams scheduled, kept rate and conversion each improved by just <b>1% a month</b>, the practice would go from ${b.starts.toFixed(1)} to about <b>${e.st.toFixed(1)} starts a month</b> within a year, adding roughly <b>${usdK(proj.delta)}</b> in net production.`,
+    `<div class="cols c4">${tile("1% more exams","≈ "+usdK(proj.each),`a year · ${b.exams.toFixed(1)} to ${(b.exams*1.01).toFixed(1)} a month`)}${tile("1% better kept rate","≈ "+usdK(proj.each),`a year · ${pct(b.kept)} to ${pct(b.kept*1.01)}`)}${tile("1% better conversion","≈ "+usdK(proj.each),`a year · ${pct(b.conv)} to ${pct(b.conv*1.01)}`)}${tile("All three, just once","≈ "+usdK(proj.once),"a year, with no further gains")}</div>
+    <div class="cols w"><div class="block"><h3>Cumulative net production</h3><div class="legend"><span><i class="ln" style="background:${C.s1}"></i>Current pace</span><span><i class="ln" style="background:${C.s2}"></i>1% better each month</span></div>${cum(proj)}</div>
+      <div class="block"><h3>The 1% path, month by month</h3><table><thead><tr><th>Month</th><th>Exams</th><th>Kept</th><th>Conv.</th><th>Starts</th></tr></thead><tbody>
+        ${q.map(r=>`<tr${r.i===12?' class="sec"':""}><td>${r.i?"Month "+r.i:"Now"}</td><td>${r.ex.toFixed(1)}</td><td>${pct(r.k)}</td><td>${pct(r.c)}</td><td>${r.st.toFixed(1)}</td></tr>`).join("")}</tbody></table>
+        <table><tbody><tr><td>Net production at current pace, 12 mo</td><td>${usdK(proj.base)}</td></tr><tr><td>On the 1% path</td><td>${usdK(proj.scn)}</td></tr><tr class="tot"><td>Difference</td><td>+${usdK(proj.delta)}</td></tr></tbody></table></div></div>
     <div class="cols w"><div class="block"><h3>How the Revenue Health Index is scored</h3><table><thead><tr><th>Measure</th><th>This month</th><th>Target = 100</th><th>Floor = 0</th><th>Score</th></tr></thead><tbody>
         ${h.comps.map(c=>`<tr><td>${c.name}</td><td>${pct(c.val)}</td><td>${c.lower?"≤":"≥"} ${c.target}%</td><td>${TARGETS[c.k][3]}%</td><td>${Math.round(c.score)}</td></tr>`).join("")}
         <tr class="tot"><td>Index (average)</td><td></td><td></td><td></td><td>${h.score??"–"}</td></tr></tbody></table>
         <p class="small muted">A value between floor and target scores in proportion. Targets are set for this practice and are not industry benchmarks.</p></div>
-      <div class="card t"><span class="eyebrow">How the outlook is built</span><p class="muted">Baseline is the ${b.n}-month average (${esc(b.from)}${b.n>1?" to "+esc(b.to):""}): ${b.exams.toFixed(1)} exams, ${pct(b.kept)} kept, ${pct(b.conv)} conversion, ${b.starts.toFixed(1)} starts, and ${usd(b.value)} net production per start (${esc(b.valueMonth)}). Starts are assumed to scale with exams, kept rate and conversion; in practice some starts come from exams in earlier months. Scenario changes phase in over ${RAMP} months. Production is contract value; cash arrives over each patient's payment plan. This is a planning model, not a forecast of record.</p></div></div>`);
+      <div class="card t"><span class="eyebrow">How the outlook is built</span><p class="muted">The starting point is the ${b.n}-month average (${esc(b.from)}${b.n>1?" to "+esc(b.to):""}): ${b.exams.toFixed(1)} exams, ${pct(b.kept)} kept, ${pct(b.conv)} conversion, ${b.starts.toFixed(1)} starts and ${usd(b.value)} net production per start. On the 1% path each of the three improves by 1% of its own value every month. Kept rate is capped at ${CAP.kept}% and conversion at ${CAP.conv}%. Starts are assumed to scale with all three; in practice some starts come from earlier exams. Production is contract value, collected over each payment plan. An illustration, not a forecast.</p></div></div>`); }
 
   /* 7 — next steps */
   const withP=issues.map(s=>({s,q:productFor(s.key)})), spot=withP.find(x=>x.q&&x.q.ready), rest=withP.filter(x=>x!==spot), always=DB.products.filter(x=>x.always&&x.name);
@@ -604,7 +611,7 @@ function renderReport(){
     <div class="cv-mid"><span class="eyebrow">${esc(B.tagline)} report</span><h1>${esc(pr.name)}</h1><div class="cv-month">${esc(m.label)} ${m.year||""}</div>${grp?`<div class="muted" style="font-size:14px">${esc(grp)}</div>`:""}</div>
     <div class="cv-nums"><div class="cv-ring">${ring(h.score??0,h.band[1])}</div>
       <div class="tile"><span class="l">Revenue Health Index</span><span class="v">${h.band[0]}</span><span class="d">${h.comps.length} measures against target</span></div>
-      ${opp>0?`<div class="tile"><span class="l">Potential 12-month upside</span><span class="v" style="color:var(--brand)">${usdK(opp)}</span><span class="d">an estimate, not a forecast</span></div>`:""}
+      ${opp>0?`<div class="tile"><span class="l">1% better each month</span><span class="v" style="color:var(--brand)">+${usdK(opp)}</span><span class="d">over 12 months, an illustration</span></div>`:""}
       ${d.net!==null?`<div class="tile"><span class="l">Net production</span><span class="v">${usdK(d.net)}</span><span class="d">${int(m.starts)} treatment starts</span></div>`:`<div class="tile"><span class="l">Treatment starts</span><span class="v">${int(m.starts)}</span><span class="d">${pct(m.convRate)} conversion</span></div>`}</div>
     <div class="cv-band"><div><span class="eyebrow">Inside this report</span><ol>${pages.map((pg,i)=>`<li><span>${pg.eyebrow}</span><span>${i+2}</span></li>`).join("")}</ol></div>
       <div class="cv-by"><span class="eyebrow">Prepared by</span><b>${esc(B.name)}</b>${B.contact?`<span>${esc(B.contact)}</span>`:""}<span class="cv-conf">${esc(B.footer)}</span></div></div>

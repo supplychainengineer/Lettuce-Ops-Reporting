@@ -14,6 +14,6 @@ The PDF is built at three times screen resolution with a hidden text layer, so i
 
 Data is saved in the browser only. Use the backup text to move it between computers.
 
-The outlook is a planning model: starts scale in proportion to exams, kept rate and conversion from the trailing three-month average. Targets and loss rates are editable starting values, not industry benchmarks.
+The outlook shows the "1% better each month" path: exams scheduled, kept rate and conversion each improve by 1% of their own value every month, compounding, with kept rate capped at 97% and conversion at 90%. Starts scale with all three from the trailing three-month average. It is an illustration, not a forecast. Targets and loss rates are editable starting values, not industry benchmarks.
 
 `sample-report.pdf` is the output for the bundled sample (Asana Ortho, October 2026). Patient names are not included; keep them out of this repository.
