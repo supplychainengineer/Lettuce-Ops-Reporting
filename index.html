@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LettuceOps RCM Reporter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<style>
+/* Layout: one working column (max 1080px). Tabs switch between Outlook (the pitch), Report (the monthly document) and Data (entry grid). */
+:root{
+  --bg:#f6f8f5; --surface:#ffffff; --sunken:#edf1ec; --line:#d9e0d7;
+  --fg:#16201a; --fg2:#4d5a51; --fg3:#75827a;
+  --accent:#2e7d32; --accent-soft:#e3f1e2; --on-accent:#ffffff;
+  --s1:#2a78d6; --s2:#eb6834; --s1-soft:rgba(42,120,214,.12); --gap-fill:rgba(235,104,52,.14);
+  --good:#1d7a3a; --good-bg:#e2f3e6; --warn:#8a5a00; --warn-bg:#fbefd0; --bad:#b3261e; --bad-bg:#fbe4e2; --info:#3b5568; --info-bg:#e6edf2;
+  --font:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#121613; --surface:#1a1f1b; --sunken:#222923; --line:#333c35;
+  --fg:#edf1ed; --fg2:#bcc6be; --fg3:#8d998f;
+  --accent:#6fbf73; --accent-soft:#223525; --on-accent:#0e160f;
+  --s1:#3987e5; --s2:#d95926; --s1-soft:rgba(57,135,229,.16); --gap-fill:rgba(217,89,38,.2);
+  --good:#7fd197; --good-bg:#1d3324; --warn:#e9c063; --warn-bg:#3a3018; --bad:#f19b95; --bad-bg:#3e2220; --info:#a9c3d6; --info-bg:#22303a;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#121613; --surface:#1a1f1b; --sunken:#222923; --line:#333c35;
+  --fg:#edf1ed; --fg2:#bcc6be; --fg3:#8d998f;
+  --accent:#6fbf73; --accent-soft:#223525; --on-accent:#0e160f;
+  --s1:#3987e5; --s2:#d95926; --s1-soft:rgba(57,135,229,.16); --gap-fill:rgba(217,89,38,.2);
+  --good:#7fd197; --good-bg:#1d3324; --warn:#e9c063; --warn-bg:#3a3018; --bad:#f19b95; --bad-bg:#3e2220; --info:#a9c3d6; --info-bg:#22303a;
+  color-scheme:dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 56px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{margin:0;text-wrap:balance;line-height:1.2}
+h1{font-size:22px;font-weight:700} h2{font-size:19px;font-weight:700} h3{font-size:15px;font-weight:600}
+p{margin:0} .muted{color:var(--fg2)} .small{font-size:13px} .num{font-variant-numeric:tabular-nums}
+.eyebrow{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);font-weight:600}
+header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand b{color:var(--accent)}
+nav{display:flex;gap:4px;background:var(--sunken);padding:4px;border-radius:10px}
+nav a{padding:7px 14px;border-radius:7px;color:var(--fg2);text-decoration:none;font-weight:600;font-size:14px}
+nav a[aria-current="page"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.view{display:flex;flex-direction:column;gap:28px}
+.block{display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .v{font-size:27px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:13px;color:var(--fg2);font-weight:600}
+.kpi .d{font-size:12.5px;color:var(--fg3)}
+.hero{display:flex;flex-direction:column;gap:6px}
+.hero .big{font-size:clamp(30px,6vw,46px);font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums;color:var(--accent)}
+.scn{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:22px}
+@media (max-width:760px){.scn{grid-template-columns:minmax(0,1fr)}}
+.levers{display:flex;flex-direction:column;gap:14px}
+.lever label{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:14px}
+.lever output{font-variant-numeric:tabular-nums;color:var(--accent)}
+.lever input[type=range]{width:100%;accent-color:var(--accent);margin:4px 0 0}
+.lever .d{font-size:12.5px;color:var(--fg3)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:inherit;font-size:13.5px;font-weight:600;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--fg3)}
+button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.out{display:flex;flex-direction:column;gap:14px;min-width:0}
+.outnums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px}
+.outnums div{display:flex;flex-direction:column}
+.outnums .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.outnums .l{font-size:12.5px;color:var(--fg2)}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{font-family:var(--font);font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--fg2)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.legend i.sq{height:10px;width:10px}
+.signals{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
+.signal{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pill{align-self:flex-start;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px}
+.pill.good{color:var(--good);background:var(--good-bg)} .pill.warn{color:var(--warn);background:var(--warn-bg)}
+.pill.bad{color:var(--bad);background:var(--bad-bg)} .pill.info{color:var(--info);background:var(--info-bg)}
+.minis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.mini{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.mini .l{font-size:13px;color:var(--fg2);font-weight:600}
+.mini .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.two{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:22px}
+@media (max-width:760px){.two{grid-template-columns:minmax(0,1fr)}}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+thead th{font-size:12.5px;color:var(--fg2);font-weight:600;background:var(--sunken)}
+tr.sec td{font-weight:700;background:var(--accent-soft)}
+tr.sub td:first-child{padding-left:26px} tr.sub2 td:first-child{padding-left:44px}
+tr.tot td{font-weight:700}
+.grid input{width:112px;font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg)}
+.grid thead input{font-weight:700;text-align:right}
+.grid td,.grid th{padding:4px 8px}
+input.txt,textarea{font:inherit;padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+textarea{width:100%;min-height:90px;font-size:13px}
+.doc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:clamp(18px,4vw,36px);display:flex;flex-direction:column;gap:26px}
+.doc ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px;max-width:78ch}
+.doc li b{font-weight:700}
+.checks{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.checks div{display:flex;gap:8px;align-items:baseline}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--fg);color:var(--bg);font-size:12.5px;line-height:1.4;padding:6px 9px;border-radius:6px;max-width:240px;white-space:pre-line;font-variant-numeric:tabular-nums}
+details summary{cursor:pointer;font-size:13px;color:var(--fg2);font-weight:600}
+.hit{fill:transparent} .hit:hover{fill:var(--s1-soft)}
+@media print{
+  body{background:#fff;padding:0} header.top,.noprint,#view-outlook,#view-data{display:none!important}
+  #view-report{display:flex!important} .doc{border:0;padding:0}
+}
+@media (prefers-reduced-motion:no-preference){nav a{transition:background .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <span class="eyebrow"><b>LettuceOps</b> · RCM Reporter</span>
+      <h1 id="hTitle">Monthly report</h1>
+    </div>
+    <nav aria-label="Views">
+      <a href="#outlook" data-v="outlook">Outlook</a>
+      <a href="#report" data-v="report">Report</a>
+      <a href="#data" data-v="data">Data</a>
+    </nav>
+  </header>
+
+  <section class="view" id="view-outlook"></section>
+  <section class="view" id="view-report" hidden></section>
+  <section class="view" id="view-data" hidden></section>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+"use strict";
+/* ---------- field definitions (order = order in the data grid) ---------- */
+const FIELDS = [
+  {sec:"Lettuce Verify"},
+  ["exams","Exams scheduled","n"],["keptRate","Kept exam rate %","%"],
+  ["insSingle","Patients with single coverage","n"],["insDual","Patients with dual coverage","n"],
+  ["verPrior","Prior verifications","n"],["verSame","Same-day verifications","n"],["verPost","Post-exam verifications","n"],
+  {sec:"Lettuce Claim"},
+  ["starts","Treatment starts","n"],["convRate","Starts conversion rate %","%"],
+  ["aobSub","AOB to subscriber $","$"],["aobPrac","AOB to practice $","$"],
+  ["submitted","Claims submitted","n"],["pending","Claims pending","n"],["denialRate","Denial rate %","%"],["resubRate","Re-submit rate %","%"],
+  {sec:"Lettuce Collect: production"},
+  ["startsIns","Starts with insurance","n"],["sds","SDS (same-day starts)","n"],["gross","Gross production $","$"],["adj","Production adjustment $","$"],
+  ["payInFull","Pay-in-full cases","n"],["avgDeposit","Avg. initial deposit $","$"],
+  {sec:"Insurance A/R"},
+  ["insFR","Future revenue $","$"],["insCur","Overdue: current cycle $","$"],["ins30","Overdue: 1–30 $","$"],["ins60","Overdue: 31–60 $","$"],["ins90","Overdue: 61–90 $","$"],["ins91","Overdue: 91+ $","$"],
+  {sec:"Patient A/R"},
+  ["patFR","Future revenue $","$"],["patCur","Overdue: current cycle $","$"],["pat30","Overdue: 1–30 $","$"],["pat60","Overdue: 31–60 $","$"],["pat90","Overdue: 61–90 $","$"],["pat91","Overdue: 91+ $","$"],
+  {sec:"Payment posting"},
+  ["insCheck","Insurance: check $","$"],["insCheckN","Insurance: check count","n"],["insVC","Insurance: virtual card $","$"],["insVCN","Insurance: virtual card count","n"],
+  ["patFinix","Patient: Finix $","$"],["patFinixN","Patient: Finix count","n"],["patElite","Patient: Elite $","$"],["patEliteN","Patient: Elite count","n"],
+  ["patCheck","Patient: check $","$"],["patCheckN","Patient: check count","n"],["patCash","Patient: cash $","$"],["patCashN","Patient: cash count","n"]
+];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const BUCKETS = [["Cur","Current cycle"],["30","1–30"],["60","31–60"],["90","61–90"],["91","91+"]];
+
+/* Sample: Asana Ortho, Aug–Oct 2026, from the October report. Patient names are deliberately left out. */
+const SAMPLE = {
+  practice:"Asana Ortho", short:"AO", source:"Ortho2 Edge and BerryPay",
+  risk:{Cur:2,"30":5,"60":10,"90":20,"91":40},
+  months:[
+    {label:"August",exams:69,keptRate:92.1,insSingle:61,insDual:8,verPrior:53,verSame:9,verPost:7,starts:40,convRate:76.9,aobSub:29740,aobPrac:20915,submitted:7,pending:0,denialRate:0,resubRate:0,notes:""},
+    {label:"September",exams:68,keptRate:83.8,insSingle:61,insDual:8,verPrior:52,verSame:11,verPost:0,starts:30,convRate:66.67,aobSub:14300,aobPrac:15440,submitted:40,pending:3,denialRate:2.5,resubRate:0,notes:""},
+    {label:"October",exams:51,keptRate:90.1,insSingle:61,insDual:7,verPrior:42,verSame:20,verPost:6,starts:35,convRate:81.3,aobSub:14770,aobPrac:22102.5,submitted:25,pending:2,denialRate:0,resubRate:0,
+     startsIns:14,sds:23,gross:244540,adj:14918.4,payInFull:11,avgDeposit:500,
+     insFR:112489.07,insCur:20674.94,ins30:15274.44,ins60:8058.55,ins90:3682.56,ins91:7137.64,
+     patFR:1109922.14,patCur:0,pat30:30568.76,pat60:12450.87,pat90:13460.79,pat91:27854,
+     insCheck:5537.69,insCheckN:7,insVC:5743.79,insVCN:9,patFinix:153741.37,patFinixN:310,patElite:4354.93,patEliteN:18,patCheck:1199.33,patCheckN:4,patCash:1640,patCashN:3,
+     notes:"Patient 1: awaiting completion of the credentialing process before claim submission.\nPatient 2: HLD form required before claim submission."}
+  ],
+  scn:null
+};
+
+/* ---------- state ---------- */
+const KEY = "lettuceops-rcm-v1";
+let S = load();
+function load(){ try{ const j = localStorage.getItem(KEY); if(j){ const o = JSON.parse(j); if(o && Array.isArray(o.months) && o.months.length) return o; } }catch(e){} return JSON.parse(JSON.stringify(SAMPLE)); }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const has = v => v !== null && v !== undefined && v !== "" && !Number.isNaN(v);
+const n0 = v => has(v) ? +v : 0;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const usd = (v,d=0) => has(v) ? "$" + (+v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}) : "–";
+const usdK = v => { const a = Math.abs(v); return (v<0?"-":"") + (a>=1e6 ? "$"+(a/1e6).toFixed(2)+"M" : a>=1e4 ? "$"+Math.round(a/1e3)+"K" : a>=1e3 ? "$"+(a/1e3).toFixed(1)+"K" : "$"+Math.round(a)); };
+const pct = (v,d=1) => has(v) ? (+v).toFixed(d).replace(/\.0+$/,"").replace(/(\.\d*[1-9])0+$/,"$1") + "%" : "–";
+const int = v => has(v) ? (+v).toLocaleString("en-US") : "–";
+const fmt = (v,t) => t==="$" ? usd(v,2) : t==="%" ? pct(v,2) : int(v);
+const sum = (m,keys) => keys.reduce((a,k)=>a+n0(m[k]),0);
+const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
+
+function derive(m){
+  const d = {};
+  d.withIns = sum(m,["insSingle","insDual"]);
+  d.verified = sum(m,["verPrior","verSame","verPost"]);
+  d.pipeline = sum(m,["submitted","pending"]);
+  d.net = has(m.gross) ? n0(m.gross)-n0(m.adj) : null;
+  d.insOver = sum(m,BUCKETS.map(b=>"ins"+b[0])); d.patOver = sum(m,BUCKETS.map(b=>"pat"+b[0]));
+  d.insAR = n0(m.insFR)+d.insOver; d.patAR = n0(m.patFR)+d.patOver;
+  d.insColl = sum(m,["insCheck","insVC"]); d.patColl = sum(m,["patFinix","patElite","patCheck","patCash"]);
+  d.coll = d.insColl+d.patColl;
+  d.hasAR = has(m.insFR)||has(m.patFR)||d.insOver>0||d.patOver>0;
+  d.hasPost = d.coll>0;
+  d.atRisk = BUCKETS.reduce((a,b)=>a+(n0(m["ins"+b[0]])+n0(m["pat"+b[0]]))*n0(S.risk[b[0]])/100,0);
+  return d;
+}
+const last = () => S.months[S.months.length-1];
+const prev = () => S.months[S.months.length-2];
+
+/* Baseline for the outlook: trailing average (up to 3 months) of the funnel, value per start from the latest month with production. */
+function baseline(){
+  const w = S.months.slice(-3).filter(m=>has(m.exams)&&has(m.starts)&&has(m.keptRate)&&has(m.convRate));
+  if(!w.length) return null;
+  const pm = [...S.months].reverse().find(m=>has(m.gross)&&n0(m.starts)>0);
+  if(!pm) return null;
+  const b = {n:w.length, from:w[0].label, to:w[w.length-1].label,
+    exams:avg(w.map(m=>+m.exams)), kept:avg(w.map(m=>+m.keptRate)), conv:avg(w.map(m=>+m.convRate)), starts:avg(w.map(m=>+m.starts)),
+    bestKept:Math.max(...w.map(m=>+m.keptRate)), bestConv:Math.max(...w.map(m=>+m.convRate)), bestExams:Math.max(...w.map(m=>+m.exams)),
+    value:(n0(pm.gross)-n0(pm.adj))/pm.starts, valueMonth:pm.label};
+  b.annual = b.starts*12*b.value;
+  b.ptKept = b.annual/b.kept; b.ptConv = b.annual/b.conv;
+  b.perExam = b.starts/b.exams*b.value;
+  return b;
+}
+const RAMP = 3; // months for a scenario change to reach full effect
+function project(b, sc, months){
+  const sStarts = b.starts*(sc.exams/b.exams)*(sc.kept/b.kept)*(sc.conv/b.conv);
+  const pts = [{m:0,base:0,scn:0}]; let cb=0, cs=0;
+  for(let i=1;i<=months;i++){ cb += b.starts*b.value; cs += (b.starts+(sStarts-b.starts)*Math.min(1,i/RAMP))*b.value; pts.push({m:i,base:cb,scn:cs}); }
+  return {sStarts, pts, base:cb, scn:cs, delta:cs-cb};
+}
+
+/* ---------- tooltip ---------- */
+const tip = $("#tip");
+document.addEventListener("pointermove", e => {
+  const t = e.target.closest && e.target.closest("[data-tip]");
+  if(!t){ tip.hidden = true; return; }
+  tip.textContent = t.getAttribute("data-tip"); tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(window.innerWidth-r.width-8, e.clientX+14))+"px";
+  tip.style.top = Math.max(8, e.clientY-r.height-12)+"px";
+});
+document.addEventListener("pointerleave", ()=>tip.hidden=true);
+
+/* ---------- charts ---------- */
+function niceTicks(max, n=4){ if(max<=0) return [0,1]; const raw=max/n, p=Math.pow(10,Math.floor(Math.log10(raw))); const f=[1,2,2.5,5,10].find(x=>x*p>=raw)*p; const t=[]; for(let v=0; v<max+f*0.999; v+=f) t.push(v); return t; }
+
+function cumChart(pr){
+  const W=640,H=300,L=56,R=96,T=14,B=34, pts=pr.pts, N=pts.length-1;
+  const ticks=niceTicks(Math.max(pr.base,pr.scn)), ymax=ticks[ticks.length-1];
+  const x=m=>L+(W-L-R)*m/N, y=v=>T+(H-T-B)*(1-v/ymax);
+  const path=k=>pts.map((p,i)=>(i?"L":"M")+x(p.m).toFixed(1)+" "+y(p[k]).toFixed(1)).join("");
+  const area=path("scn")+pts.slice().reverse().map(p=>"L"+x(p.m).toFixed(1)+" "+y(p.base).toFixed(1)).join("")+"Z";
+  const step=N<=12?3:6; let g="";
+  ticks.forEach(t=>{ g+=`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(t)+4}" text-anchor="end" font-size="11.5" fill="var(--fg3)">${usdK(t)}</text>`; });
+  for(let m=0;m<=N;m+=step) g+=`<text x="${x(m)}" y="${H-12}" text-anchor="middle" font-size="11.5" fill="var(--fg3)">${m?"Mo "+m:"Now"}</text>`;
+  let ys=y(pr.scn), yb=y(pr.base); if(Math.abs(ys-yb)<30){ const mid=(ys+yb)/2, up=pr.scn>=pr.base?-1:1; ys=mid+up*15; yb=mid-up*15; }
+  const lab=(yy,name,v)=>`<text x="${W-R+8}" y="${yy-1}" font-size="11.5" fill="var(--fg2)">${name}</text><text x="${W-R+8}" y="${yy+13}" font-size="13" font-weight="700" fill="var(--fg)">${usdK(v)}</text>`;
+  let hits=""; const cw=(W-L-R)/N;
+  pts.forEach(p=>{ if(p.m) hits+=`<rect class="hit" x="${x(p.m)-cw/2}" y="${T}" width="${cw}" height="${H-T-B}" data-tip="Month ${p.m}\nScenario ${usd(p.scn)}\nCurrent pace ${usd(p.base)}\nGap ${usd(p.scn-p.base)}"/>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net production, current pace versus scenario">${g}
+    <path d="${area}" fill="var(--gap-fill)" stroke="none"/>
+    <path d="${path("base")}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round"/>
+    <path d="${path("scn")}" fill="none" stroke="var(--s2)" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="${x(N)}" cy="${y(pr.base)}" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+    <circle cx="${x(N)}" cy="${y(pr.scn)}" r="4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>
+    ${lab(yb,"Current pace",pr.base)}${lab(ys,"Scenario",pr.scn)}${hits}</svg>`;
+}
+
+function agingChart(m){
+  const W=560,H=260,L=52,R=8,T=12,B=34;
+  const vals=BUCKETS.map(b=>[n0(m["ins"+b[0]]),n0(m["pat"+b[0]])]);
+  const ticks=niceTicks(Math.max(1,...vals.flat())), ymax=ticks[ticks.length-1];
+  const gw=(W-L-R)/BUCKETS.length, bw=Math.min(34,gw/2-8), y=v=>T+(H-T-B)*(1-v/ymax);
+  let g="";
+  ticks.forEach(t=>{ g+=`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(t)+4}" text-anchor="end" font-size="11.5" fill="var(--fg3)">${usdK(t)}</text>`; });
+  BUCKETS.forEach((b,i)=>{ const cx=L+gw*(i+.5);
+    g+=`<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="11.5" fill="var(--fg3)">${b[1]}</text>`;
+    [["Insurance","--s1",-bw-1],["Patient","--s2",1]].forEach((s,j)=>{ const v=vals[i][j], h=Math.max(0,y(0)-y(v)); if(h<=0) return;
+      const r=Math.min(4,h), x0=cx+s[2];
+      g+=`<path d="M${x0} ${y(0)}V${y(v)+r}q0 ${-r} ${r} ${-r}h${bw-2*r}q${r} 0 ${r} ${r}V${y(0)}Z" fill="var(${s[1]})" data-tip="${s[0]} A/R, ${b[1]}\n${usd(v,2)}\nAssumed uncollected: ${n0(S.risk[b[0]])}%"/>`; });
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Overdue A/R by aging bucket, insurance and patient">${g}</svg>`;
+}
+
+function spark(vals, labels, f){
+  const W=220,H=64,P=8, ok=vals.map((v,i)=>has(v)?[i,+v]:null).filter(Boolean);
+  if(ok.length<2) return "";
+  const lo=Math.min(...ok.map(p=>p[1])), hi=Math.max(...ok.map(p=>p[1])), span=(hi-lo)||1;
+  const x=i=>P+(W-2*P)*i/(vals.length-1), y=v=>H-P-(H-2*P)*(v-lo)/span;
+  const d=ok.map((p,i)=>(i?"L":"M")+x(p[0]).toFixed(1)+" "+y(p[1]).toFixed(1)).join("");
+  const e=ok[ok.length-1], cw=(W-2*P)/(vals.length-1);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Trend"><path d="${d}L${x(e[0])} ${H-P}L${x(ok[0][0])} ${H-P}Z" fill="var(--s1-soft)"/><path d="${d}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round"/>
+   <circle cx="${x(e[0])}" cy="${y(e[1])}" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>
+   ${ok.map(p=>`<rect class="hit" x="${x(p[0])-cw/2}" y="0" width="${cw}" height="${H}" data-tip="${esc(labels[p[0]])}: ${f(p[1])}"/>`).join("")}</svg>`;
+}
+
+/* ---------- insight signals ---------- */
+function signals(){
+  const m=last(), p=prev(), d=derive(m), b=baseline(), out=[];
+  const add=(tone,tag,title,body)=>out.push({tone,tag,title,body});
+  if(p && has(m.exams) && has(p.exams) && +p.exams>0){
+    const ch=(m.exams-p.exams)/p.exams*100;
+    if(ch<=-10) add("bad","Risk","Exam volume fell "+pct(Math.abs(ch),0)+" in "+m.label, `${int(m.exams)} exams against ${int(p.exams)} in ${p.label}. Exams are the top of the funnel, so this shows up as fewer starts one to two months out.`+(b?` At the current yield each exam on the schedule is worth about ${usd(b.perExam)} in net production.`:""));
+    else if(ch>=10) add("good","Strength","Exam volume grew "+pct(ch,0)+" in "+m.label, `${int(m.exams)} exams against ${int(p.exams)} in ${p.label}.`);
+  }
+  if(p && has(m.convRate) && has(p.convRate)){
+    const ch=m.convRate-p.convRate;
+    if(Math.abs(ch)>=3) add(ch>0?"good":"warn", ch>0?"Strength":"Watch", `Conversion ${ch>0?"up":"down"} ${Math.abs(ch).toFixed(1)} pts to ${pct(m.convRate)}`, b?`Held for a year, one conversion point is worth about ${usd(b.ptConv)} in net production.`:"");
+  }
+  if(p && has(m.keptRate) && has(p.keptRate)){
+    const ch=m.keptRate-p.keptRate;
+    if(Math.abs(ch)>=2) add(ch>0?"good":"warn", ch>0?"Strength":"Watch", `Kept exam rate ${ch>0?"up":"down"} ${Math.abs(ch).toFixed(1)} pts to ${pct(m.keptRate)}`, b?`One kept-rate point is worth about ${usd(b.ptKept)} a year.`:"");
+  }
+  if(d.verified>0){
+    const sh=n0(m.verPrior)/d.verified*100, pd=p?derive(p):null, psh=pd&&pd.verified?n0(p.verPrior)/pd.verified*100:null;
+    if(psh!==null && sh<psh-5) add("warn","Watch",`Only ${pct(sh,0)} of verifications were done ahead of the visit`, `Down from ${pct(psh,0)} in ${p.label}; same-day verifications went from ${int(p.verSame)} to ${int(m.verSame)}. Same-day checks leave no time to fix coverage problems before the consult, which is where denials and delayed starts begin.`);
+    else if(sh>=75) add("good","Strength",`${pct(sh,0)} of verifications were done ahead of the visit`, "Coverage problems are being found before the patient is in the chair.");
+  }
+  const aob=n0(m.aobSub)+n0(m.aobPrac);
+  if(aob>0){
+    const sh=n0(m.aobPrac)/aob*100, pa=p?n0(p.aobSub)+n0(p.aobPrac):0, psh=pa?n0(p.aobPrac)/pa*100:null;
+    add(sh>=50?"good":"warn", sh>=50?"Strength":"Watch", `${pct(sh,0)} of insurance benefit is assigned to the practice`, (psh!==null?`${psh<sh?"Up":"Down"} from ${pct(psh,0)} in ${p.label}. `:"")+`${usd(m.aobSub)} still pays out to subscribers, which the practice then has to collect from the patient.`);
+  }
+  if(d.hasAR && d.insAR>0){
+    const sh=d.insOver/d.insAR*100, mo=d.insColl>0?d.insOver/d.insColl:null;
+    add(sh>=25?"bad":sh>=12?"warn":"good", sh>=25?"Risk":sh>=12?"Watch":"Strength", `${pct(sh,0)} of insurance A/R is overdue`, `${usd(d.insOver)} of ${usd(d.insAR)}.`+(mo?` Insurance posted ${usd(d.insColl)} in ${m.label}; at that pace the overdue balance alone takes ${mo.toFixed(1)} months to clear, before any new claims age.`:""));
+  }
+  if(d.hasAR && d.patOver>0){
+    const big=BUCKETS.map(b=>[b[1],n0(m["pat"+b[0]])]).sort((a,c)=>c[1]-a[1])[0], s91=n0(m.pat91)/d.patOver*100;
+    add(s91>=30?"warn":"info", s91>=30?"Watch":"Note", `${usd(m.pat91)} of patient A/R is past 90 days`, `That is ${pct(s91,0)} of patient overdue (${usd(d.patOver)}). The largest bucket is ${big[0]} at ${usd(big[1])}, so the 91+ balance grows next quarter unless early follow-up catches it.`);
+  }
+  if(has(m.denialRate)) add(+m.denialRate===0?"good":+m.denialRate<5?"warn":"bad", +m.denialRate===0?"Strength":"Watch", +m.denialRate===0?"No claims denied in "+m.label:`Denial rate ${pct(m.denialRate)}`, `${int(m.submitted)} submitted, ${int(m.pending)} pending.`+(n0(m.pending)>0?" Pending claims need the action listed in the report.":""));
+  return out;
+}
+
+/* ---------- Outlook view ---------- */
+let horizon = 12;
+function defaultScn(b){ return {exams:Math.round(b.exams), kept:b.bestKept, conv:b.bestConv, cut:50}; }
+function renderOutlook(){
+  const el=$("#view-outlook"), b=baseline(), m=last(), d=derive(m);
+  if(!b){ el.innerHTML=`<div class="panel"><h2>Outlook needs a little more data</h2><p class="muted">Enter exams, kept rate, starts and conversion for at least one month, and gross production for at least one month, on the <a href="#data">Data</a> tab.</p></div>`; return; }
+  if(!S.scn) S.scn=defaultScn(b);
+  const sc=S.scn, fr=n0(m.insFR)+n0(m.patFR);
+  const lever=(id,label,min,max,step,val,desc)=>`<div class="lever"><label for="lv-${id}">${label}<output id="lo-${id}"></output></label><input type="range" id="lv-${id}" data-k="${id}" min="${min}" max="${max}" step="${step}" value="${val}"><div class="d">${desc}</div></div>`;
+  const sig=signals();
+  const months=S.months.slice(-6), labs=months.map(x=>x.label);
+  const mini=(k,l,f)=>`<div class="mini"><div class="l">${l}</div><div class="v">${f(m[k])}</div>${spark(months.map(x=>x[k]),labs,f)}</div>`;
+  el.innerHTML=`
+  <div class="block">
+    <div class="hero">
+      <span class="eyebrow">${esc(S.practice)} · outlook from ${esc(b.from)}${b.n>1?"–"+esc(b.to):""}</span>
+      <h2>At the current pace the practice produces <span class="num">${usdK(b.annual)}</span> a year. Small funnel changes move that number a lot.</h2>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><span class="l">One point of kept-exam rate</span><span class="v">${usdK(b.ptKept)}</span><span class="d">net production per year</span></div>
+      <div class="kpi"><span class="l">One point of conversion</span><span class="v">${usdK(b.ptConv)}</span><span class="d">net production per year</span></div>
+      <div class="kpi"><span class="l">One more exam on the schedule</span><span class="v">${usdK(b.perExam)}</span><span class="d">expected net production</span></div>
+      <div class="kpi"><span class="l">Contracted future revenue</span><span class="v">${fr?usdK(fr):"–"}</span><span class="d">already on the books, not yet due</span></div>
+    </div>
+    <p class="small muted">Basis: ${b.n}-month average of ${b.exams.toFixed(1)} exams, ${pct(b.kept)} kept, ${pct(b.conv)} conversion and ${b.starts.toFixed(1)} starts a month; ${usd(b.value)} net production per start (${esc(b.valueMonth)}).</p>
+  </div>
+
+  <div class="block">
+    <h2>What changes if the funnel changes</h2>
+    <div class="panel scn">
+      <div class="levers">
+        <div class="row noprint"><button id="pBest" type="button">Best recent month</button><button id="pHold" type="button">Current pace</button>
+          <select id="hz" aria-label="Horizon"><option value="12">12 months</option><option value="24">24 months</option><option value="36">36 months</option></select></div>
+        ${lever("exams","Exams per month",Math.round(b.exams*0.6),Math.round(b.exams*1.5),1,sc.exams,`Average now ${b.exams.toFixed(1)}; best recent month ${int(b.bestExams)}`)}
+        ${lever("kept","Kept exam rate",70,100,0.1,sc.kept,`Average now ${pct(b.kept)}; best recent month ${pct(b.bestKept)}`)}
+        ${lever("conv","Starts conversion rate",40,100,0.1,sc.conv,`Average now ${pct(b.conv)}; best recent month ${pct(b.bestConv)}`)}
+        ${lever("cut","Aged A/R loss prevented",0,100,5,sc.cut,`Share of the ${usdK(d.atRisk)} at risk in overdue A/R that follow-up recovers`)}
+      </div>
+      <div class="out" id="scOut"></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>What ${esc(m.label)} is signalling</h2>
+    <div class="signals">${sig.map(s=>`<div class="signal"><span class="pill ${s.tone}">${s.tag}</span><h3>${esc(s.title)}</h3><p class="small muted">${esc(s.body)}</p></div>`).join("")}</div>
+  </div>
+
+  <div class="block">
+    <h2>Funnel trend</h2>
+    <div class="minis">${mini("exams","Exams scheduled",int)}${mini("keptRate","Kept exam rate",pct)}${mini("starts","Treatment starts",int)}${mini("convRate","Conversion rate",pct)}</div>
+  </div>
+
+  ${d.hasAR?`<div class="block">
+    <h2>Overdue A/R and what is likely to be lost</h2>
+    <div class="panel two">
+      <div class="out"><div class="legend"><span><i class="sq" style="background:var(--s1)"></i>Insurance</span><span><i class="sq" style="background:var(--s2)"></i>Patient</span></div>${agingChart(m)}</div>
+      <div class="out">
+        <div class="outnums"><div><span class="v">${usd(d.insOver+d.patOver)}</span><span class="l">overdue today</span></div><div><span class="v" id="riskV">${usd(d.atRisk)}</span><span class="l">likely uncollected at these rates</span></div></div>
+        <div class="scroll"><table><thead><tr><th>Aging bucket</th><th>Balance</th><th>Assumed uncollected %</th></tr></thead><tbody>
+        ${BUCKETS.map(k=>`<tr><td>${k[1]}</td><td>${usd(n0(m["ins"+k[0]])+n0(m["pat"+k[0]]))}</td><td class="grid"><input id="rk-${k[0]}" data-risk="${k[0]}" inputmode="decimal" value="${n0(S.risk[k[0]])}" style="width:64px" aria-label="Assumed uncollected percent, ${k[1]}"></td></tr>`).join("")}
+        </tbody></table></div>
+        <p class="small muted">The loss rates are planning assumptions, not measured history. Replace them with the practice's own write-off experience when it is known.</p>
+      </div>
+    </div>
+  </div>`:""}
+  <p class="small muted">How the projection works: starts scale in proportion to exams, kept rate and conversion from the trailing average; production is starts times net production per start; scenario changes phase in over ${RAMP} months. Production is contract value, so cash arrives over each patient's payment plan. This is a planning model, not a forecast of record.</p>`;
+  $("#hz").value=String(horizon);
+  renderScn();
+}
+function renderScn(){
+  const b=baseline(), sc=S.scn, d=derive(last()), pr=project(b,sc,horizon), rec=d.atRisk*sc.cut/100;
+  $("#lo-exams").textContent=int(sc.exams); $("#lo-kept").textContent=pct(sc.kept); $("#lo-conv").textContent=pct(sc.conv); $("#lo-cut").textContent=pct(sc.cut,0);
+  const sign=v=>(v>=0?"+":"−")+usdK(Math.abs(v)).replace("-","");
+  const step=horizon/4;
+  $("#scOut").innerHTML=`
+    <div class="hero"><span class="eyebrow">Difference over ${horizon} months</span><span class="big">${sign(pr.delta+rec)}</span>
+      <span class="small muted">${sign(pr.delta)} net production from ${Math.abs(pr.sStarts-b.starts).toFixed(1)} ${pr.sStarts>=b.starts?"more":"fewer"} starts a month${rec>0?`, plus ${usdK(rec)} of overdue A/R recovered`:""}</span></div>
+    <div class="outnums">
+      <div><span class="v">${pr.sStarts.toFixed(1)}</span><span class="l">starts a month (now ${b.starts.toFixed(1)})</span></div>
+      <div><span class="v">${usdK(pr.scn)}</span><span class="l">scenario net production</span></div>
+      <div><span class="v">${usdK(pr.base)}</span><span class="l">at current pace</span></div>
+    </div>
+    <div class="legend"><span><i style="background:var(--s1)"></i>Current pace</span><span><i style="background:var(--s2)"></i>Scenario</span><span>Cumulative net production</span></div>
+    ${cumChart(pr)}
+    <details><summary>Show as table</summary><div class="scroll"><table><thead><tr><th>Month</th><th>Current pace</th><th>Scenario</th><th>Gap</th></tr></thead><tbody>
+    ${[1,2,3,4].map(i=>pr.pts[i*step]).map(p=>`<tr><td>${p.m}</td><td>${usd(p.base)}</td><td>${usd(p.scn)}</td><td>${usd(p.scn-p.base)}</td></tr>`).join("")}</tbody></table></div></details>`;
+}
+$("#view-outlook").addEventListener("input", e=>{
+  const k=e.target.dataset.k, r=e.target.dataset.risk;
+  if(k){ S.scn[k]=+e.target.value; save(); renderScn(); }
+  if(r){ S.risk[r]=parseNum(e.target.value)??0; save(); $("#riskV").textContent=usd(derive(last()).atRisk); renderScn(); }
+});
+$("#view-outlook").addEventListener("change", e=>{
+  if(e.target.id==="hz"){ horizon=+e.target.value; renderScn(); }
+  if(e.target.dataset.risk) renderOutlook();
+});
+$("#view-outlook").addEventListener("click", e=>{
+  const b=baseline(); if(!b) return;
+  if(e.target.id==="pBest"){ S.scn=defaultScn(b); save(); renderOutlook(); }
+  if(e.target.id==="pHold"){ S.scn={exams:Math.round(b.exams),kept:+b.kept.toFixed(1),conv:+b.conv.toFixed(1),cut:0}; save(); renderOutlook(); }
+});
+
+/* ---------- Report view ---------- */
+function cmp(cur,old,f,what,mL,pL){
+  if(!has(cur)) return "";
+  if(!has(old)) return `${what} was ${f(cur)} in ${mL}`;
+  const dir = +cur>+old ? "increased to" : +cur<+old ? "decreased to" : "remained at";
+  return `${what} ${dir} ${f(cur)} in ${mL}, compared to ${f(old)} in ${pL}`;
+}
+function narrative(){
+  const m=last(), p=prev()||{}, d=derive(m), pd=prev()?derive(p):{}, mL=m.label, pL=p.label, out=[];
+  const u0=v=>usd(v, Number.isInteger(+v)?0:2), u2=v=>usd(v,2), cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+  if(has(m.exams)){
+    let t=cap(cmp(m.exams,p.exams,int,"exam appointments",mL,pL))+". ";
+    if(has(m.keptRate)){ const up=has(p.keptRate)&&m.keptRate>p.keptRate, dn=has(p.keptRate)&&m.keptRate<p.keptRate;
+      t+=`The kept exam rate ${up?"improved to":dn?"declined to":"was"} ${pct(m.keptRate)}${has(p.keptRate)?`, compared to ${pct(p.keptRate)} in ${pL}`:""}`;
+      t+= up&&+m.exams<+p.exams ? ", indicating better appointment retention despite a lower exam volume." : "."; }
+    out.push(["Lettuce Verify Overview",t]);
+  }
+  if(d.withIns||d.verified){
+    let t=`A total of ${int(d.withIns)} patients with insurance were recorded in ${mL}, consisting of ${int(n0(m.insSingle))} with single coverage and ${int(n0(m.insDual))} with dual coverage. LettuceOps completed ${int(d.verified)} verifications, including ${int(n0(m.verPrior))} prior verifications, ${int(n0(m.verSame))} same-day verifications and ${int(n0(m.verPost))} post-exam verifications.`;
+    if(has(p.verSame)&&+m.verSame!==+p.verSame) t+=` Same-day verifications ${+m.verSame>+p.verSame?"increased":"decreased"} from ${int(p.verSame)} to ${int(m.verSame)}${+m.verSame>+p.verSame?", indicating a higher volume of last-minute verification activity":""}.`;
+    if(d.verified!==d.withIns) t+=` Verifications (${int(d.verified)}) differ from insured patients (${int(d.withIns)}) because verification also covers patients found to have no coverage, terminated plans or no remaining maximum.`;
+    out.push(["Insurance Coverage & Verification Performance",t]);
+  }
+  if(has(m.starts)){
+    let t=cap(cmp(m.starts,p.starts,int,"treatment starts",mL,pL))+".";
+    if(has(m.convRate)){ const up=has(p.convRate)&&m.convRate>p.convRate, dn=has(p.convRate)&&m.convRate<p.convRate;
+      t+=` The conversion rate ${up?"improved to":dn?"declined to":"was"} ${pct(m.convRate,2)}${has(p.convRate)?`, compared to ${pct(p.convRate,2)} in ${pL}`:""}${up?", indicating stronger conversion of exams into treatment starts":""}.`; }
+    out.push(["Treatment Starts & Conversion",t]);
+  }
+  if(has(m.aobSub)||has(m.aobPrac)){
+    const a=cmp(m.aobSub,p.aobSub,u0,"AOB to subscribers",mL,pL), c=cmp(m.aobPrac,p.aobPrac,u0,"AOB assigned to the practice",mL,pL);
+    out.push(["AOB Financial Summary",[a,c].filter(Boolean).join(". ")+"."]);
+  }
+  if(d.pipeline||has(m.denialRate)){
+    let t=cap(cmp(d.pipeline,pd.pipeline,int,"the claim pipeline",mL,pL))+`. Of these, ${int(n0(m.submitted))} claims were submitted and ${int(n0(m.pending))} remain pending.`;
+    if(has(m.denialRate)){ const better=has(p.denialRate)&&m.denialRate<p.denialRate, worse=has(p.denialRate)&&m.denialRate>p.denialRate;
+      t+=` The denial rate ${better?"improved to":worse?"rose to":"was"} ${pct(m.denialRate)}${has(p.denialRate)&&+p.denialRate!==+m.denialRate?`, compared to ${pct(p.denialRate)} in ${pL}`:""}`;
+      t+= has(m.resubRate) ? `, and the re-submission rate ${has(p.resubRate)&&+p.resubRate===+m.resubRate?"remained at":"was"} ${pct(m.resubRate)}.` : "."; }
+    out.push(["Claims Pipeline & Denials",t]);
+  }
+  if(d.net!==null){
+    let t=`Gross production was ${u2(m.gross)}, with production adjustments of ${u2(n0(m.adj))}, resulting in net production of ${u2(d.net)}.`;
+    if(d.hasPost) t+=` Patient collections totaled ${u2(d.patColl)} and insurance collections ${u2(d.insColl)}, for total collections of ${u2(d.coll)}.`;
+    if(d.hasAR) t+=` Future revenue stands at ${u2(n0(m.insFR)+n0(m.patFR))} across patient and insurance accounts.`;
+    out.push(["Production & Collections",t]);
+  }
+  if(d.hasAR){
+    const top=pre=>BUCKETS.map(b=>[b[1],n0(m[pre+b[0]])]).sort((a,c)=>c[1]-a[1])[0], ti=top("ins"), tp=top("pat");
+    const nm=x=>x[0]==="Current cycle"?"the current cycle":"the "+x[0]+" day bucket";
+    out.push(["A/R Health",`Insurance A/R stands at ${u2(d.insAR)}, with ${u2(d.insOver)} in overdue balances. Patient A/R stands at ${u2(d.patAR)}, with ${u2(d.patOver)} overdue. Insurance overdue balances are highest in ${nm(ti)} (${u2(ti[1])}); patient overdue balances are highest in ${nm(tp)} (${u2(tp[1])})${n0(m.pat91)>0&&tp[0]!=="91+"?`, with ${u2(m.pat91)} past 90 days`:""}.`]);
+  }
+  const sg=signals().filter(s=>s.tone==="bad"||s.tone==="warn").slice(0,3);
+  if(sg.length) out.push(["Key Insights / Risks / Decisions", sg.map(s=>s.title+". "+s.body).join(" ")]);
+  if(d.hasPost){
+    const pm=[["Finix",n0(m.patFinix)],["Elite",n0(m.patElite)],["check",n0(m.patCheck)],["cash",n0(m.patCash)]].sort((a,c)=>c[1]-a[1])[0];
+    out.push(["Payment Posting",`A total of ${u2(d.coll)} in payments was posted during ${mL}, comprising ${u2(d.patColl)} in patient collections and ${u2(d.insColl)} in insurance collections. ${cap(pm[0])} accounted for ${pct(pm[1]/(d.patColl||1)*100,0)} of patient payment postings; insurance payments were posted through checks (${u2(n0(m.insCheck))}) and virtual cards (${u2(n0(m.insVC))}).`]);
+  }
+  return out;
+}
+function checks(){
+  const m=last(), d=derive(m), out=[], ok=(c,t)=>out.push([c,t]);
+  const miss=FIELDS.filter(f=>Array.isArray(f)&&!has(m[f[0]])).length;
+  ok(miss===0, miss?`${miss} fields are empty for ${m.label}; sections without data are left out of the report.`:`Every field is filled in for ${m.label}.`);
+  if(has(m.keptRate)) ok(m.keptRate>=0&&m.keptRate<=100,"Kept exam rate is between 0 and 100%.");
+  if(has(m.convRate)) ok(m.convRate>=0&&m.convRate<=100,"Conversion rate is between 0 and 100%.");
+  if(has(m.startsIns)&&has(m.starts)) ok(+m.startsIns<=+m.starts,"Starts with insurance do not exceed total starts.");
+  if(has(m.exams)&&has(m.keptRate)&&has(m.starts)&&has(m.convRate)){ const kept=m.exams*m.keptRate/100, base=m.starts/(m.convRate/100);
+    ok(Math.abs(kept-base)<=1.5, Math.abs(kept-base)<=1.5 ? "Conversion rate is consistent with kept exams." : `Conversion rate implies ${base.toFixed(0)} kept appointments, but exams × kept rate gives ${kept.toFixed(0)}. Confirm the conversion denominator (kept appointments, NP review) is the intended one.`); }
+  return out;
+}
+function renderReport(){
+  const el=$("#view-report"), ms=S.months.slice(-3), m=last(), d=derive(m);
+  const cols=ms.map(x=>`<th>${esc(x.label)}</th>`).join("");
+  const row=(label,f,cls="")=>`<tr class="${cls}"><td>${label}</td>${ms.map(x=>`<td>${f(x,derive(x))}</td>`).join("")}</tr>`;
+  const one=(label,v,cls="")=>`<tr class="${cls}"><td>${label}</td><td>${v}</td></tr>`;
+  const nar=narrative(), ck=checks(), framed=window.self!==window.top;
+  const aging=pre=>BUCKETS.map((b,i)=>one(i?"A/R aging "+b[1]:b[1],usd(m[pre+b[0]],2),i?"sub2":"sub")).join("");
+  el.innerHTML=`
+  <div class="row noprint"><button class="primary" id="cpy" type="button">Copy summary text</button>${framed?"":`<button id="prt" type="button">Print or save as PDF</button>`}<span class="small muted" id="cpyMsg">${framed?"To print, open index.html from the repository directly in a browser.":""}</span></div>
+  <div class="panel noprint checks"><h3>Checks before sending</h3>${ck.map(c=>`<div><span class="pill ${c[0]?"good":"warn"}">${c[0]?"OK":"Check"}</span><span>${esc(c[1])}</span></div>`).join("")}</div>
+  <article class="doc">
+    <div><span class="eyebrow">LettuceOps</span><h2 style="font-size:26px">${esc(S.short||S.practice)} – ${esc(m.label)} Monthly Report</h2></div>
+    <div class="block"><h3>Summary</h3><ul id="sumList">${nar.map(n=>`<li><b>${esc(n[0])} – </b>${esc(n[1])}</li>`).join("")}</ul></div>
+    <div class="block"><h3>1. Lettuce Verify</h3><div class="scroll"><table><thead><tr><th>Verification</th>${cols}</tr></thead><tbody>
+      ${row("Exam scheduled",x=>int(x.exams))}${row("Kept exam rate %",x=>pct(x.keptRate))}
+      ${row("With insurance",(x,dd)=>int(dd.withIns),"sec")}${row("Single",x=>int(x.insSingle),"sub")}${row("Dual",x=>int(x.insDual),"sub")}
+      ${row("Insurance verified by LettuceOps",(x,dd)=>int(dd.verified),"sec")}${row("Prior verification",x=>int(x.verPrior),"sub")}${row("Same day",x=>int(x.verSame),"sub")}${row("Post-exam verifications",x=>int(x.verPost),"sub")}
+    </tbody></table></div></div>
+    <div class="block"><h3>2. Lettuce Claim</h3><div class="scroll"><table><thead><tr><th>Claim</th>${cols}</tr></thead><tbody>
+      ${row("Tx starts",x=>int(x.starts))}${row("Starts conv rate %",x=>pct(x.convRate,2))}${row("AOB – Subscriber",x=>usd(x.aobSub,2))}${row("AOB – Practice",x=>usd(x.aobPrac,2))}
+      ${row("Claim pipeline",(x,dd)=>int(dd.pipeline),"sec")}${row("Submitted",x=>int(x.submitted),"sub")}${row("Pending",x=>int(x.pending),"sub")}${row("Denial rate",x=>pct(x.denialRate),"sub")}${row("Re-submit rate",x=>pct(x.resubRate),"sub")}
+    </tbody></table></div>
+    ${m.notes?`<div><h3>Pending claims – action required</h3>${m.notes.split("\n").filter(Boolean).map(l=>`<p>${esc(l)}</p>`).join("")}</div>`:""}</div>
+    ${d.net!==null||d.hasAR?`<div class="block"><h3>3. Lettuce Collect</h3><div class="scroll"><table><thead><tr><th>Collect</th><th>${esc(m.label)}</th></tr></thead><tbody>
+      ${one("#Starts (#Ins)",`${int(m.starts)} (${int(m.startsIns)})`)}${one("#SDS",int(m.sds))}${one("Gross production",usd(m.gross,2),"tot")}${one("Production adjustment",usd(m.adj,2))}${one("Net production",usd(d.net,2),"tot")}${one("#Pay-in-full",int(m.payInFull))}${one("Avg. initial deposit",usd(m.avgDeposit,2))}
+      ${one("Insurance A/R","","sec")}${one("Total A/R",usd(d.insAR,2),"sub")}${one("Total F/R (future revenue)",usd(m.insFR,2),"sub")}${one("Total overdue",usd(d.insOver,2),"sub")}${aging("ins")}
+      ${one("Patient A/R","","sec")}${one("Total A/R",usd(d.patAR,2),"sub")}${one("Total F/R (future revenue)",usd(m.patFR,2),"sub")}${one("Total overdue",usd(d.patOver,2),"sub")}${aging("pat")}
+    </tbody></table></div><p class="small muted">Data extracted from ${esc(S.source)}.</p></div>`:""}
+    ${d.hasPost?`<div class="block"><h3>4. Payment Posting Breakdown</h3><div class="scroll"><table><thead><tr><th>Collections</th><th>Total</th><th>Payments posted</th></tr></thead><tbody>
+      <tr class="sec"><td>Insurance collection</td><td>${usd(d.insColl,2)}</td><td>${int(n0(m.insCheckN)+n0(m.insVCN))}</td></tr>
+      <tr class="sub"><td>Check</td><td>${usd(m.insCheck,2)}</td><td>${int(m.insCheckN)}</td></tr><tr class="sub"><td>Virtual card</td><td>${usd(m.insVC,2)}</td><td>${int(m.insVCN)}</td></tr>
+      <tr class="sec"><td>Patient collection</td><td>${usd(d.patColl,2)}</td><td>${int(n0(m.patFinixN)+n0(m.patEliteN)+n0(m.patCheckN)+n0(m.patCashN))}</td></tr>
+      ${[["Finix","patFinix"],["Elite","patElite"],["Check","patCheck"],["Cash","patCash"]].map(r=>`<tr class="sub"><td>${r[0]}</td><td>${usd(m[r[1]],2)}</td><td>${int(m[r[1]+"N"])}</td></tr>`).join("")}
+      <tr class="tot"><td>Total</td><td>${usd(d.coll,2)}</td><td></td></tr>
+    </tbody></table></div></div>`:""}
+  </article>`;
+}
+$("#view-report").addEventListener("click", e=>{
+  if(e.target.id==="prt") window.print();
+  if(e.target.id==="cpy"){
+    const text=narrative().map(n=>n[0]+" – "+n[1]).join("\n\n"), msg=$("#cpyMsg");
+    const fallback=()=>{ const r=document.createRange(); r.selectNodeContents($("#sumList")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); msg.textContent="Summary selected. Press Ctrl/Cmd+C to copy."; };
+    try{ navigator.clipboard.writeText(text).then(()=>msg.textContent="Summary copied.",fallback); }catch(err){ fallback(); }
+  }
+});
+
+/* ---------- Data view ---------- */
+function parseNum(s){ const t=String(s).replace(/[$,%\s]/g,""); if(t===""||t==="-"||t==="–") return null; const v=Number(t); return Number.isFinite(v)?v:null; }
+let armReset=false;
+function renderData(){
+  const el=$("#view-data"), ms=S.months;
+  el.innerHTML=`
+  <div class="block">
+    <h2>Practice</h2>
+    <div class="row"><label class="small muted" for="fPractice">Name</label><input class="txt" id="fPractice" value="${esc(S.practice)}">
+      <label class="small muted" for="fShort">Short name</label><input class="txt" id="fShort" value="${esc(S.short)}" style="width:80px">
+      <label class="small muted" for="fSource">Data source</label><input class="txt" id="fSource" value="${esc(S.source)}"></div>
+  </div>
+  <div class="block">
+    <div class="row" style="justify-content:space-between"><h2>Monthly numbers</h2>
+      <div class="row"><button class="primary" id="addM" type="button">Add next month</button><button id="delM" type="button">Remove last month</button><button id="rst" type="button">Reset to sample</button></div></div>
+    <p class="small muted">Type the numbers from the PMS, the tracker sheet and the payment posting sheet. Totals, rates of change, the written summary and the outlook are worked out from these. The report compares the last column with the one before it. Everything is saved in this browser.</p>
+    <div class="panel scroll" style="padding:8px"><table class="grid"><thead><tr><th>Field</th>${ms.map((m,i)=>`<th><input id="ml-${i}" data-label="${i}" value="${esc(m.label)}" aria-label="Month name"></th>`).join("")}</tr></thead><tbody>
+      ${FIELDS.map(f=>Array.isArray(f)
+        ? `<tr><td>${f[1]}</td>${ms.map((m,i)=>`<td><input id="f-${f[0]}-${i}" data-f="${f[0]}" data-i="${i}" inputmode="decimal" value="${has(m[f[0]])?m[f[0]]:""}" aria-label="${f[1]}, ${esc(m.label)}"></td>`).join("")}</tr>`
+        : `<tr class="sec"><td colspan="${ms.length+1}">${f.sec}</td></tr>`).join("")}
+    </tbody></table></div>
+  </div>
+  <div class="block"><h2>Pending claims – action required (${esc(last().label)})</h2>
+    <p class="small muted">One line per claim. This text is stored in your browser and appears in the report, so use an identifier you are allowed to share.</p>
+    <textarea id="fNotes">${esc(last().notes||"")}</textarea></div>
+  <div class="block"><h2>Move data between browsers</h2>
+    <p class="small muted">Copy this text to back up or hand over the data. To load data, paste it here and choose Load.</p>
+    <textarea id="fJson" spellcheck="false">${esc(JSON.stringify(S))}</textarea>
+    <div class="row"><button id="jCopy" type="button">Copy</button><button id="jLoad" type="button">Load pasted data</button><span class="small muted" id="jMsg"></span></div></div>`;
+}
+const dv=$("#view-data");
+dv.addEventListener("input", e=>{
+  const t=e.target, ds=t.dataset;
+  if(ds.f){ S.months[+ds.i][ds.f]=parseNum(t.value); S.scn=null; }
+  else if(ds.label!==undefined) S.months[+ds.label].label=t.value;
+  else if(t.id==="fPractice"){ S.practice=t.value; title(); }
+  else if(t.id==="fShort") S.short=t.value;
+  else if(t.id==="fSource") S.source=t.value;
+  else if(t.id==="fNotes") last().notes=t.value;
+  else return;
+  save();
+});
+dv.addEventListener("click", e=>{
+  const id=e.target.id;
+  if(id==="addM"){ const i=MONTHS.indexOf(last().label); S.months.push({label:i>=0?MONTHS[(i+1)%12]:"Next month",notes:""}); S.scn=null; save(); renderData(); title(); }
+  if(id==="delM"&&S.months.length>1){ S.months.pop(); S.scn=null; save(); renderData(); title(); }
+  if(id==="rst"){ if(!armReset){ armReset=true; e.target.textContent="Click again to replace all data"; return; } armReset=false; S=JSON.parse(JSON.stringify(SAMPLE)); save(); renderData(); title(); }
+  if(id==="jCopy"){ const ta=$("#fJson"); ta.value=JSON.stringify(S); const fb=()=>{ ta.select(); $("#jMsg").textContent="Selected. Press Ctrl/Cmd+C to copy."; }; try{ navigator.clipboard.writeText(ta.value).then(()=>$("#jMsg").textContent="Copied.",fb); }catch(err){ fb(); } }
+  if(id==="jLoad"){ try{ const o=JSON.parse($("#fJson").value); if(!o||!Array.isArray(o.months)||!o.months.length) throw 0; S=Object.assign(JSON.parse(JSON.stringify(SAMPLE)),o); save(); renderData(); title(); $("#jMsg").textContent="Loaded."; }catch(err){ $("#jMsg").textContent="That text is not a valid export. Paste the full text copied from this box."; } }
+});
+
+/* ---------- routing ---------- */
+function title(){ $("#hTitle").textContent=(S.practice||"Practice")+" · "+last().label; }
+function route(){
+  const v=["outlook","report","data"].includes(location.hash.slice(1))?location.hash.slice(1):"outlook";
+  document.querySelectorAll("nav a").forEach(a=>a.dataset.v===v?a.setAttribute("aria-current","page"):a.removeAttribute("aria-current"));
+  ["outlook","report","data"].forEach(k=>$("#view-"+k).hidden=k!==v);
+  armReset=false;
+  ({outlook:renderOutlook,report:renderReport,data:renderData})[v]();
+}
+window.addEventListener("hashchange",route);
+title(); route();
+</script>
+</body>
+</html>
